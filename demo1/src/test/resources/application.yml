@@ -1,0 +1,56 @@
+# 测试环境配置
+spring:
+  application:
+    name: rag-qa-system-test
+
+  # 使用H2内存数据库进行测试
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password: 
+    driver-class-name: org.h2.Driver
+    hikari:
+      pool-name: Test-HikariPool
+      maximum-pool-size: 5
+
+  # JPA配置
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  # H2控制台配置（调试用）
+  h2:
+    console:
+      enabled: false
+
+  # 禁用DemoUserInitializer
+  main:
+    allow-bean-definition-overriding: true
+
+# JWT配置（使用测试密钥）
+jwt:
+  secret: VGVzdFByb2R1Y3Rpb25LZXkxMjM0NTY3ODkwMTIzNDU2Nzg5MA==
+  access-token:
+    expiration: 300000  # 5分钟
+  refresh-token:
+    expiration: 1800000  # 30分钟
+
+# 禁用实际服务
+aliyun:
+  ocr:
+    enabled: false
+
+langchain4j:
+  modelscope:
+    api-key: test-api-key
+
+# 日志配置
+logging:
+  level:
+    root: INFO
+    com.hiyuan: DEBUG

@@ -1,0 +1,189 @@
+spring:
+  application:
+    name: rag-qa-system
+
+  # 禁用静态资源处理对 API 路径的干扰
+  web:
+    resources:
+      add-mappings: false
+
+  # 数据源配置
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:rag_qa_system}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: RAG-QA-HikariPool
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      auto-commit: true
+      connection-test-query: SELECT 1
+
+  # Flyway 数据库迁移配置
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 0
+    validate-on-migrate: true
+    out-of-order: false
+    clean-disabled: true  # 生产环境禁用clean操作
+
+  # SQL 初始化配置（已迁移到Flyway，此处禁用）
+  sql:
+    init:
+      mode: never  # 禁用Spring的SQL初始化，使用Flyway代替
+
+  # JPA/Hibernate 配置
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          batch_size: 20
+          fetch_size: 50
+        order_inserts: true
+        order_updates: true
+        generate_statistics: false
+
+  # 文件上传配置
+  servlet:
+    multipart:
+      max-file-size: 52428800
+      max-request-size: 52428800
+      enabled: true
+
+# 服务器配置
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+  tomcat:
+    threads:
+      max: 200
+      min-spare: 10
+
+# ==================== LangChain4j 配置 ====================
+# 使用魔搭社区 ModelScope OpenAI 兼容接口
+
+langchain4j:
+  modelscope:
+    # ModelScope API Key
+    api-key: ${MODELSCOPE_API_KEY:}
+    
+    # API Base URL (ModelScope OpenAI 兼容接口)
+    base-url: https://api-inference.modelscope.cn/v1
+    
+    # 聊天模型配置
+    chat-model: deepseek-ai/DeepSeek-R1-0528
+    
+    # 嵌入模型配置
+    embedding-model: Qwen/Qwen3-Embedding-0.6B
+    
+    # 生成参数
+    temperature: 0.7          # 生成温度 (0-1)，越高越随机
+    max-tokens: 2048          # 最大输出 token 数
+
+# MRL (Matryoshka Representation Learning) 配置
+embedding:
+  original-dimension: 1024    # 原始向量维度（Qwen3-Embedding-0.6B 输出维度）
+  target-dimension: 1024      # 目标存储维度（支持: 256, 512, 1024, 2048）
+  # 使用 MRL 可以在保持大部分语义信息的同时减少存储空间和提升检索速度
+
+# 文档处理配置
+document:
+  upload-dir: ./uploads
+  max-file-size: 52428800
+  supported-types: PDF,DOCX,PPTX,TXT
+  chunk-size: 1000                     # 分块大小（字符数）
+  chunk-overlap: 100                   # 分块重叠（字符数）
+
+# 阿里云 OCR 配置（高精版）
+# 用于识别扫描版 PDF、图片中的文字
+# 服务地址：https://market.aliyun.com/products/56928004/cmapi00040084.html
+aliyun:
+  ocr:
+    # OCR 功能总开关
+    enabled: true
+
+    # 阿里云 AppCode（从环境变量读取）
+    appcode: ${ALIYUN_OCR_APPCODE:}
+    
+    # API 地址配置
+    host: https://gjbsb.market.alicloudapi.com
+    path: /ocrservice/advanced
+    
+    # 成本控制：单个 PDF 最大处理页数
+    # 防止大 PDF 产生高额费用（高精版约 ¥0.02-0.05/页）
+    max-pages-per-pdf: 10
+    
+    # OCR 触发阈值：提取文字少于该字符数时启用 OCR
+    # 200 字符约为半页 A4 纸的文字量
+    min-text-length: 200
+    
+    # 请求延时（毫秒）：避免触发阿里云限流
+    delay-between-pages: 300
+
+# 问答配置
+qa:
+  top-k: 5                             # 检索相关文档数量
+  temperature: 0.7                     # LLM 生成温度
+  max-tokens: 2000                     # 最大生成 token 数
+  timeout-seconds: 120                 # 问答超时时间
+
+# 日志配置
+logging:
+  level:
+    root: INFO
+    com.hiyuan: DEBUG
+    dev.langchain4j: DEBUG             # LangChain4j 日志
+    org.hibernate.SQL: DEBUG           # 显示 SQL 语句
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE  # 显示 SQL 参数
+    org.springframework.web: INFO
+  file:
+    name: logs/application.log
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# 线程池配置
+async:
+  core-pool-size: 2
+  max-pool-size: 5
+  queue-capacity: 100
+  thread-name-prefix: document-processor-
+
+# 管理端点
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+# ==================== JWT 认证配置 ====================
+# JWT Token 配置用于用户登录认证
+# 双Token策略：Access Token (短期) + Refresh Token (长期)
+
+jwt:
+  # JWT 签名密钥（从环境变量读取，生产环境必须设置）
+  # 至少32个字符的Base64编码字符串
+  secret: ${JWT_SECRET:}
+  
+  # Access Token 配置（用于API认证，短期有效）
+  access-token:
+    expiration: 1800000  # 30分钟 (毫秒) = 30 * 60 * 1000
+  
+  # Refresh Token 配置（用于刷新Access Token，长期有效）
+  refresh-token:
+    expiration: 604800000  # 7天 (毫秒) = 7 * 24 * 60 * 60 * 1000

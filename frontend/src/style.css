@@ -1,0 +1,138 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #428bf0;
+  --color-background-light: #f6f7f8;
+  --color-background-dark: #101822;
+  --color-card-dark: #1c232e;
+  --color-card-border: #2d3748;
+  
+  --font-display: "Lexend", sans-serif;
+
+  --animate-fade-in: fadeIn 0.3s ease-out;
+  --animate-blink: blink 1s step-start infinite;
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes blink {
+    50% { opacity: 0; }
+  }
+}
+
+/* Enable dark mode variant */
+@variant dark {
+  &:where(.dark, .dark *) {
+    @slot;
+  }
+}
+
+/* Custom Utilities */
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  font-size: 24px;
+  line-height: 1;
+}
+
+/* Base resets and global styles */
+:root {
+  font-family: var(--font-display);
+}
+
+html, body, #app {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+
+/* Streaming Text Cursor */
+.streaming-text::after {
+  content: "▋";
+  animation: var(--animate-blink);
+  color: var(--color-primary);
+  margin-left: 2px;
+}
+
+/* Dark mode transition configuration */
+html {
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+/* Smooth transitions for theme-related properties on common elements */
+body,
+div,
+span,
+p,
+h1, h2, h3, h4, h5, h6,
+a,
+button,
+input,
+select,
+textarea,
+nav,
+aside,
+main,
+header,
+footer,
+section,
+article,
+ul,
+ol,
+li,
+table,
+thead,
+tbody,
+tr,
+th,
+td,
+.card,
+.btn {
+  transition-property: background-color, background-image, border-color, color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 400ms;
+}
+
+/* Icon transitions for smooth color change */
+.material-symbols-outlined {
+  transition: color 400ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Button hover transitions */
+button,
+a {
+  transition-property: background-color, border-color, color, transform, box-shadow;
+  transition-duration: 200ms;
+  transition-timing-function: ease-out;
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+/* Exclude performance-critical elements from transitions */
+.no-theme-transition {
+  transition: none !important;
+}

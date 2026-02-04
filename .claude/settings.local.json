@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(claude mcp add filesystem npx:*)",
+      "Bash(claude mcp --help:*)",
+      "Bash(claude mcp:*)",
+      "Bash(set CLAUDE_CODE_GIT_BASH_PATH=\"C:\\\\Program Files\\\\Git\\\\bin\\\\bash.exe\")",
+      "Bash(where:*)",
+      "Bash(set CLAUDE_CODE_GIT_BASH_PATH=D:Program Files2Gitusrbinbash.exe)",
+      "Bash(if not exist \"%USERPROFILE%\\\\.claude\" mkdir \"%USERPROFILE%\\\\.claude\")",
+      "Bash(powershell:*)",
+      "Bash(export:*)",
+      "Bash(npx --version)",
+      "Bash(npm install:*)",
+      "Bash(npm root:*)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(del:*)",
+      "Bash(rd:*)",
+      "Bash(powershell.exe:*)",
+      "Bash(xargs git:*)",
+      "Bash(git rm:*)",
+      "Bash(git reset:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}
