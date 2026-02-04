@@ -37,7 +37,7 @@ export const useDocumentStore = defineStore('documents', () => {
     }
   }
 
-  async function uploadDocument(file, onProgress = null) {
+  async function uploadDocument(file) {
     // Extract file extension
     const extension = file.name.split('.').pop().toLowerCase()
     
@@ -63,12 +63,6 @@ export const useDocumentStore = defineStore('documents', () => {
       const response = await api.post('/documents/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
-        },
-        onUploadProgress: (progressEvent) => {
-          if (progressEvent.lengthComputable && onProgress) {
-            const progress = Math.round((progressEvent.loaded / progressEvent.total) * 100)
-            onProgress(progress)
-          }
         }
       })
       

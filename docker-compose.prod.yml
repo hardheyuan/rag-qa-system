@@ -1,0 +1,107 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 数据库
+  postgres:
+    image: pgvector/pgvector:pg15
+    container_name: rag-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rag_qa_system}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5432:5432"  # 仅本地访问，不暴露到公网
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-rag_qa_system}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rag-network
+
+  # 后端服务
+  backend:
+    build:
+      context: ./demo1
+      dockerfile: Dockerfile
+    container_name: rag-backend
+    environment:
+      # 数据库配置
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-rag_qa_system}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+
+      # JPA 配置
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      SPRING_JPA_SHOW_SQL: "false"
+
+      # ModelScope API 配置
+      LANGCHAIN4J_MODELSCOPE_API_KEY: ${MODELSCOPE_API_KEY}
+      LANGCHAIN4J_MODELSCOPE_BASE_URL: https://api-inference.modelscope.cn/v1
+      LANGCHAIN4J_MODELSCOPE_CHAT_MODEL: deepseek-ai/DeepSeek-R1-0528
+      LANGCHAIN4J_MODELSCOPE_EMBEDDING_MODEL: Qwen/Qwen3-Embedding-0.6B
+
+      # JWT 配置
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ACCESS_TOKEN_EXPIRATION: 1800000
+      JWT_REFRESH_TOKEN_EXPIRATION: 604800000
+
+      # 阿里云 OCR（可选）
+      ALIYUN_OCR_APPCODE: ${ALIYUN_OCR_APPCODE:-}
+
+      # 服务器配置
+      SERVER_PORT: 8080
+      SERVER_FORWARD_HEADERS_STRATEGY: native
+
+      # 日志级别
+      LOGGING_LEVEL_ROOT: INFO
+      LOGGING_LEVEL_COM_HIYUAN: INFO
+
+    ports:
+      - "127.0.0.1:8080:8080"  # 仅本地访问，通过 Nginx 反向代理
+    volumes:
+      - backend_uploads:/app/uploads
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/system/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - rag-network
+
+  # 前端服务（Nginx）
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: rag-frontend
+    ports:
+      - "80:80"
+      - "443:443"  # HTTPS（如需配置 SSL）
+    volumes:
+      - ./nginx/ssl:/etc/nginx/ssl:ro  # SSL 证书（可选）
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - rag-network
+
+volumes:
+  postgres_data:
+    driver: local
+  backend_uploads:
+    driver: local
+
+networks:
+  rag-network:
+    driver: bridge

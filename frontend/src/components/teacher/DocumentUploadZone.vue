@@ -58,56 +58,14 @@
       </div>
     </div>
 
-    <!-- Upload Progress List -->
-    <div v-if="uploadTasks.length > 0" class="mt-6 space-y-3">
-      <div class="flex items-center justify-between">
-        <h4 class="text-sm font-semibold text-slate-700 dark:text-slate-300">上传进度</h4>
-        <button 
-          @click="clearCompleted"
-          class="text-xs text-slate-400 hover:text-primary transition"
-        >
-          清除已完成
-        </button>
-      </div>
-      
-      <div v-for="task in uploadTasks" :key="task.id" class="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3">
-        <div class="flex items-center gap-3 mb-2">
-          <div class="w-8 h-8 rounded flex items-center justify-center shrink-0" :class="getFileTypeClass(task.file.name)">
-            <span class="material-symbols-outlined text-white text-sm">{{ getFileIcon(task.file.name) }}</span>
-          </div>
-          <div class="flex-1 min-w-0">
-            <p class="text-sm font-medium text-slate-700 dark:text-slate-300 truncate">{{ task.file.name }}</p>
-            <p class="text-xs text-slate-400">{{ formatFileSize(task.file.size) }}</p>
-          </div>
-          <div class="flex items-center gap-2">
-            <span v-if="task.status === 'pending'" class="text-xs text-slate-400">等待中</span>
-            <span v-if="task.status === 'uploading'" class="text-xs text-primary">{{ task.progress }}%</span>
-            <span v-if="task.status === 'success'" class="material-symbols-outlined text-emerald-500 text-lg">check_circle</span>
-            <span v-if="task.status === 'error'" class="material-symbols-outlined text-red-500 text-lg">error</span>
-            <button 
-              v-if="task.status === 'error'" 
-              @click="retryUpload(task)"
-              class="text-xs text-primary hover:text-primary/80 transition"
-            >
-              重试
-            </button>
-          </div>
-        </div>
-        
-        <!-- Progress Bar -->
-        <div v-if="task.status === 'uploading' || task.status === 'pending'" class="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
-          <div 
-            class="bg-primary h-1.5 rounded-full transition-all duration-300"
-            :style="{ width: task.progress + '%' }"
-          ></div>
-        </div>
-        
-        <!-- Error Message -->
-        <p v-if="task.status === 'error' && task.error" class="text-xs text-red-500 mt-2">
-          {{ task.error }}
-        </p>
+    <!-- Uploading Indicator -->
+    <div v-if="isUploading" class="mt-6 p-4 bg-primary/5 dark:bg-primary/10 rounded-lg border border-primary/20">
+      <div class="flex items-center gap-3">
+        <div class="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+        <span class="text-sm font-medium text-slate-700 dark:text-slate-300">正在上传文件，请稍候...</span>
       </div>
     </div>
+
   </div>
 </template>
 
@@ -121,7 +79,7 @@ const documentStore = useDocumentStore()
 const dropZone = ref(null)
 const fileInput = ref(null)
 const isDragging = ref(false)
-const uploadTasks = ref([])
+const isUploading = ref(false)
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
 const ALLOWED_TYPES = [
@@ -157,98 +115,44 @@ function handleFileSelect(e) {
   e.target.value = '' // Reset input
 }
 
-function processFiles(files) {
-  files.forEach(file => {
+async function processFiles(files) {
+  for (const file of files) {
     // Validate file type
     const extension = '.' + file.name.split('.').pop().toLowerCase()
     const isValidType = ALLOWED_TYPES.includes(file.type) || ALLOWED_EXTENSIONS.includes(extension)
-    
+
     if (!isValidType) {
       alert(`不支持的文件格式: ${file.name}\n仅支持 PDF、Word、PPT 文件`)
-      return
+      continue
     }
-    
+
     // Validate file size
     if (file.size > MAX_FILE_SIZE) {
       alert(`文件过大: ${file.name}\n单个文件不能超过 50MB`)
-      return
+      continue
     }
-    
-    // Create upload task
-    const task = {
-      id: Date.now() + Math.random(),
-      file: file,
-      status: 'pending',
-      progress: 0,
-      error: null
-    }
-    
-    uploadTasks.value.push(task)
-    uploadFile(task)
-  })
+
+    // Upload file
+    await uploadFile(file)
+  }
 }
 
-async function uploadFile(task) {
-  task.status = 'uploading'
-  task.progress = 0
-  
+async function uploadFile(file) {
+  isUploading.value = true
+
   try {
-    const result = await documentStore.uploadDocument(
-      task.file,
-      (progress) => {
-        task.progress = progress
-      }
-    )
-    
+    const result = await documentStore.uploadDocument(file)
+
     if (result.success) {
-      task.status = 'success'
-      task.progress = 100
       emit('upload-success')
     } else {
-      task.status = 'error'
-      task.error = result.message || '上传失败'
+      alert(`上传失败: ${result.message || '未知错误'}`)
     }
   } catch (error) {
-    task.status = 'error'
-    task.error = error.message || '上传失败'
+    alert(`上传失败: ${error.message || '未知错误'}`)
+  } finally {
+    isUploading.value = false
   }
-}
-
-function retryUpload(task) {
-  task.status = 'pending'
-  task.progress = 0
-  task.error = null
-  uploadFile(task)
-}
-
-function clearCompleted() {
-  uploadTasks.value = uploadTasks.value.filter(task => 
-    task.status !== 'success' && task.status !== 'error'
-  )
-}
-
-function getFileIcon(filename) {
-  const ext = filename.split('.').pop().toLowerCase()
-  const icons = {
-    pdf: 'picture_as_pdf',
-    doc: 'description',
-    docx: 'description',
-    ppt: 'slideshow',
-    pptx: 'slideshow'
-  }
-  return icons[ext] || 'insert_drive_file'
-}
-
-function getFileTypeClass(filename) {
-  const ext = filename.split('.').pop().toLowerCase()
-  const classes = {
-    pdf: 'bg-red-500',
-    doc: 'bg-blue-500',
-    docx: 'bg-blue-500',
-    ppt: 'bg-orange-500',
-    pptx: 'bg-orange-500'
-  }
-  return classes[ext] || 'bg-slate-500'
 }
 
 function formatFileSize(bytes) {

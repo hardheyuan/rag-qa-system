@@ -1,0 +1,16 @@
+# 此目录用于存放 SSL 证书文件
+# 如需启用 HTTPS，请将证书文件放入此目录：
+#
+# SSL 证书文件命名规范：
+# - 证书文件：your-domain.crt 或 your-domain.pem
+# - 私钥文件：your-domain.key
+#
+# 然后修改 docker-compose.prod.yml 中 frontend 服务的 volumes 配置：
+# volumes:
+#   - ./nginx/ssl/your-domain.crt:/etc/nginx/ssl/cert.crt:ro
+#   - ./nginx/ssl/your-domain.key:/etc/nginx/ssl/cert.key:ro
+#
+# 并修改 nginx.conf 启用 HTTPS 配置。
+#
+# 可以通过 Let's Encrypt 免费获取 SSL 证书：
+# https://certbot.eff.org/
