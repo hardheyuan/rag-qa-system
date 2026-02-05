@@ -10,8 +10,13 @@ spring:
   # 数据源配置
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:rag_qa_system}
+<<<<<<< HEAD
     username: ${DB_USERNAME:postgres}
     password: ${DB_PASSWORD:123456}
+=======
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+>>>>>>> 4864bc9e3b04fd278fdd6edca57230c1736bb769
     driver-class-name: org.postgresql.Driver
     hikari:
       pool-name: RAG-QA-HikariPool
