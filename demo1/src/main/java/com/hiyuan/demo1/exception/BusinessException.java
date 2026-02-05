@@ -59,6 +59,15 @@ public class BusinessException extends RuntimeException {
     }
 
     /**
+     * 带错误码和原因的构造函数
+     */
+    public BusinessException(int code, String message, Throwable cause) {
+        super(message, cause);
+        this.code = code;
+        this.details = cause != null ? cause.getMessage() : null;
+    }
+
+    /**
      * 完整参数的构造函数
      */
     public BusinessException(int code, String message, String details, Throwable cause) {

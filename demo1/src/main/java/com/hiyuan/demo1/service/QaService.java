@@ -8,14 +8,16 @@ import com.hiyuan.demo1.entity.QaHistory;
 import com.hiyuan.demo1.entity.User;
 import com.hiyuan.demo1.entity.VectorRecord;
 import com.hiyuan.demo1.exception.BusinessException;
-import com.hiyuan.demo1.exception.VectorOperationException;
 import com.hiyuan.demo1.repository.QaHistoryRepository;
 import com.hiyuan.demo1.repository.UserRepository;
 import com.hiyuan.demo1.repository.VectorRecordRepository;
+import com.hiyuan.demo1.security.UserPrincipal;
 import com.hiyuan.demo1.util.VectorUtils;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,7 +25,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -41,6 +42,10 @@ public class QaService {
     private final VectorRecordRepository vectorRecordRepository;
     private final UserRepository userRepository;
     private final QaHistoryRepository qaHistoryRepository;
+    
+    // 相似度阈值：低于此值的文档将被过滤
+    // 余弦相似度范围 [-1, 1]，通常相关文档 > 0.7，不相关 < 0.5
+    private static final double SIMILARITY_THRESHOLD = 0.65;
 
     /**
      * 处理问答请求
@@ -52,12 +57,34 @@ public class QaService {
         long startTime = System.currentTimeMillis();
 
         try {
-            Optional<User> user = Optional.empty();
-            if (request.getUserId() != null && !request.getUserId().isBlank()) {
-                user = userRepository.findByUsername(request.getUserId().trim());
+            // 从 Spring Security 上下文获取当前登录用户
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            UUID userId = null;
+            User user = null;
+            boolean isAdmin = false;
+            
+            if (authentication != null && authentication.getPrincipal() instanceof UserPrincipal) {
+                UserPrincipal userPrincipal = (UserPrincipal) authentication.getPrincipal();
+                userId = userPrincipal.getId();
+                user = userRepository.findById(userId).orElse(null);
+                
+                // 检查是否是管理员
+                isAdmin = userPrincipal.getAuthorities().stream()
+                    .anyMatch(auth -> auth.getAuthority().equals("ROLE_ADMIN"));
+                
+                log.info("当前用户: {} (ID: {}), 角色: {}", 
+                    userPrincipal.getUsername(), 
+                    userId,
+                    isAdmin ? "管理员" : "普通用户");
+                
+                // 管理员可以查询所有文档，普通用户只能查询自己的文档
+                if (isAdmin) {
+                    userId = null; // 设置为null表示查询所有文档
+                    log.info("管理员权限：将查询所有用户的文档");
+                }
+            } else {
+                log.warn("未找到认证用户，将查询所有文档");
             }
-
-            UUID userId = user.map(User::getId).orElse(null);
 
             int topK = request.getTopK() == null ? 5 : request.getTopK();
             if (topK < 1) topK = 1;
@@ -112,7 +139,21 @@ public class QaService {
                 try {
                     float[] docVector = VectorUtils.parseVectorString(vr.getEmbedding());
                     score = VectorUtils.cosineSimilarity(truncatedVector, docVector);
-                } catch (Exception ignored) {
+                    
+                    log.info("文档: {}, 相似度分数: {}", 
+                        document != null ? document.getFilename() : "NULL", 
+                        score != null ? String.format("%.4f", score) : "NULL");
+                    
+                    // 过滤低相似度的文档
+                    if (score != null && score < SIMILARITY_THRESHOLD) {
+                        log.info("过滤低相似度文档: {} (score: {}, threshold: {})", 
+                            document != null ? document.getFilename() : "NULL", 
+                            String.format("%.4f", score),
+                            SIMILARITY_THRESHOLD);
+                        continue;
+                    }
+                } catch (Exception e) {
+                    log.warn("计算相似度失败: {}", e.getMessage());
                 }
 
                 citations.add(QaResponse.CitationInfo.builder()
@@ -122,12 +163,14 @@ public class QaService {
                         .score(score)
                         .build());
             }
+            
+            log.info("过滤后剩余 {} 条相关引用", citations.size());
 
             String prompt = buildPrompt(request.getQuestion(), citations);
             String answer = llmService.generate(prompt);
 
             QaHistory history = new QaHistory();
-            history.setUser(user.orElse(null));
+            history.setUser(user);
             history.setQuestion(request.getQuestion());
             history.setAnswer(answer);
             history.setModelVersion("ModelScope DeepSeek-R1");

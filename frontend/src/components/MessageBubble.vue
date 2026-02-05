@@ -37,7 +37,7 @@
           <div class="flex flex-col">
             <span class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{{ citation.sourceType || 'Source' }}</span>
             <span class="text-sm font-medium text-[#111418] dark:text-gray-200 group-hover:text-primary transition truncate max-w-[200px]">
-              {{ citation.documentName || 'Unknown Document' }}
+              {{ citation.documentTitle || 'Unknown Document' }}
             </span>
             <span class="text-[10px] text-gray-400">{{ citation.page ? `Page ${citation.page}` : 'Document' }}</span>
           </div>

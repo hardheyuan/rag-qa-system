@@ -133,4 +133,11 @@ public class VectorOperationException extends BusinessException {
         return new VectorOperationException("相似度计算", null,
             "计算向量相似度失败", cause);
     }
+
+    /**
+     * 创建向量化异常
+     */
+    public static VectorOperationException embeddingError(UUID documentId, String message) {
+        return new VectorOperationException("向量化", documentId, message);
+    }
 }

@@ -21,7 +21,12 @@
       "Bash(xargs git:*)",
       "Bash(git rm:*)",
       "Bash(git reset:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(docker-compose ps:*)",
+      "Bash(mvn clean compile:*)",
+      "Bash(mvn spring-boot:run:*)",
+      "Bash(mvn help:effective-pom:*)",
+      "Bash(mvn:*)"
     ]
   }
 }

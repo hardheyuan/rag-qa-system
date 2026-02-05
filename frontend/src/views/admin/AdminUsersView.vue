@@ -317,8 +317,12 @@ async function handleCreateUser(userData) {
   try {
     await usersStore.createUser(userData)
     showCreateModal.value = false
+    // 可以添加成功提示
+    console.log('用户创建成功')
   } catch (error) {
-    alert('创建用户失败：' + error.message)
+    // 显示更详细的错误信息
+    const errorMessage = error.response?.data?.message || error.message || '创建用户失败'
+    alert('创建用户失败：' + errorMessage)
   }
 }
 

@@ -32,4 +32,18 @@ public interface UserRepository extends JpaRepository<User, UUID> {
      * 检查邮箱是否存在
      */
     boolean existsByEmail(String email);
+
+    /**
+     * 根据用户名或邮箱查找用户
+     * 
+     * 用途：支持通过用户名或邮箱添加学生到班级
+     * 
+     * @param username 用户名
+     * @param email 邮箱
+     * @return 匹配的用户（如果存在）
+     * 
+     * 使用示例：
+     * Optional<User> user = userRepository.findByUsernameOrEmail(identifier, identifier);
+     */
+    Optional<User> findByUsernameOrEmail(String username, String email);
 }

@@ -3,8 +3,11 @@ import { useUserStore } from '../stores/user'
 import StudentView from '../views/StudentView.vue'
 import TeacherView from '../views/TeacherView.vue'
 import TeacherDocumentsView from '../views/TeacherDocumentsView.vue'
+import TeacherStudentListView from '../views/teacher/TeacherStudentListView.vue'
+import TeacherStudentDetailView from '../views/teacher/TeacherStudentDetailView.vue'
 import LoginView from '../views/LoginView.vue'
 import AdminUsersView from '../views/admin/AdminUsersView.vue'
+import AdminDocumentsView from '../views/admin/AdminDocumentsView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -34,6 +37,18 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/teacher/students',
+      name: 'teacher-students',
+      component: TeacherStudentListView,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/teacher/students/:id',
+      name: 'teacher-student-detail',
+      component: TeacherStudentDetailView,
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/admin',
       name: 'admin',
       component: AdminUsersView,
@@ -43,6 +58,12 @@ const router = createRouter({
       path: '/admin/users',
       name: 'admin-users',
       component: AdminUsersView,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/admin/documents',
+      name: 'admin-documents',
+      component: AdminDocumentsView,
       meta: { requiresAuth: true }
     },
     {
@@ -96,7 +117,7 @@ router.beforeEach((to, from, next) => {
       return
     }
     // Students should not access teacher routes
-    if (userStore.user.role === 'STUDENT' && (to.name === 'teacher' || to.name === 'teacher-documents')) {
+    if (userStore.user.role === 'STUDENT' && (to.name === 'teacher' || to.name === 'teacher-documents' || to.name === 'teacher-students' || to.path.startsWith('/teacher'))) {
       next({ name: 'student' })
       return
     }

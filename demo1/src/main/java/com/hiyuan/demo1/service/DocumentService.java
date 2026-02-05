@@ -6,6 +6,7 @@ import com.hiyuan.demo1.enums.DocumentStatus;
 import com.hiyuan.demo1.enums.FileType;
 import com.hiyuan.demo1.exception.DocumentNotFoundException;
 import com.hiyuan.demo1.exception.AuthorizationException;
+import com.hiyuan.demo1.exception.BusinessException;
 import com.hiyuan.demo1.repository.DocumentRepository;
 import com.hiyuan.demo1.repository.UserRepository;
 import lombok.RequiredArgsConstructor;

@@ -35,6 +35,48 @@
           />
         </div>
 
+        <!-- Password -->
+        <div>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+            密码 <span class="text-red-500">*</span>
+          </label>
+          <div class="relative">
+            <input
+              v-model="form.password"
+              :type="showPassword ? 'text' : 'password'"
+              placeholder="至少6位字符"
+              class="w-full h-11 px-4 pr-20 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#111418] text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-primary transition-all"
+            />
+            <button
+              type="button"
+              @click="showPassword = !showPassword"
+              class="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+            >
+              <span class="material-symbols-outlined text-lg">
+                {{ showPassword ? 'visibility_off' : 'visibility' }}
+              </span>
+            </button>
+          </div>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">密码长度至少6位</p>
+        </div>
+
+        <!-- Confirm Password -->
+        <div>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
+            确认密码 <span class="text-red-500">*</span>
+          </label>
+          <input
+            v-model="form.confirmPassword"
+            :type="showPassword ? 'text' : 'password'"
+            placeholder="再次输入密码"
+            class="w-full h-11 px-4 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#111418] text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-primary transition-all"
+            :class="{ 'border-red-500': form.confirmPassword && form.password !== form.confirmPassword }"
+          />
+          <p v-if="form.confirmPassword && form.password !== form.confirmPassword" class="text-xs text-red-500 mt-1">
+            两次输入的密码不一致
+          </p>
+        </div>
+
         <!-- Role -->
         <div>
           <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
@@ -130,10 +172,13 @@ import { ref, computed } from 'vue'
 const emit = defineEmits(['close', 'create'])
 
 const loading = ref(false)
+const showPassword = ref(false)
 
 const form = ref({
   name: '',
   email: '',
+  password: '',
+  confirmPassword: '',
   role: 'Student',
   department: '',
   status: 'Active'
@@ -153,7 +198,9 @@ const statuses = [
 const isValid = computed(() => {
   return form.value.name.trim() && 
          form.value.email.trim() && 
-         /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.value.email)
+         /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.value.email) &&
+         form.value.password.length >= 6 &&
+         form.value.password === form.value.confirmPassword
 })
 
 async function handleSubmit() {
@@ -161,7 +208,9 @@ async function handleSubmit() {
   
   loading.value = true
   try {
-    await emit('create', { ...form.value })
+    // 不发送 confirmPassword 到后端
+    const { confirmPassword, ...userData } = form.value
+    await emit('create', userData)
   } finally {
     loading.value = false
   }

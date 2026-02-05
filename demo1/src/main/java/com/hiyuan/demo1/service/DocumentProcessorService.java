@@ -461,7 +461,8 @@ public class DocumentProcessorService {
         
         // 如果所有分块都失败了，抛出异常
         if (successCount == 0 && chunks.size() > 0) {
-            throw VectorOperationException.embeddingError(documentId,
+            throw VectorOperationException.embeddingError(
+                    document.getId(),
                 "所有分块向量化都失败了，请检查嵌入服务配置");
         }
     }

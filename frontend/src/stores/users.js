@@ -156,26 +156,49 @@ export const useUsersStore = defineStore('users', () => {
 
     try {
       if (backendAvailable.value) {
-        // 使用配置了JWT拦截器的 api 实例
-        const response = await api.post('/users', userData)
+        // 调用注册API，需要将字段映射到后端期望的格式
+        const registerData = {
+          username: userData.name, // 使用name作为username
+          email: userData.email,
+          password: userData.password,
+          role: userData.role.toUpperCase() // 转换为大写：ADMIN, TEACHER, STUDENT
+        }
+        
+        const response = await api.post('/auth/register', registerData)
         const data = response.data
-        users.value.push(data.data || data)
-        return data.data || data
+        
+        // 将返回的用户数据添加到列表
+        const newUser = {
+          id: data.user?.id || String(Date.now()),
+          name: data.user?.username || userData.name,
+          email: data.user?.email || userData.email,
+          role: data.user?.role || userData.role.toUpperCase(),
+          status: userData.status || 'Active',
+          lastLogin: '-',
+          avatar: '',
+          department: userData.department || ''
+        }
+        users.value.push(newUser)
+        return newUser
       }
 
       // Mock creation
       await new Promise(resolve => setTimeout(resolve, 300))
       const newUser = {
         id: String(Date.now()),
-        ...userData,
+        name: userData.name,
+        email: userData.email,
+        role: userData.role.toUpperCase(),
+        status: userData.status || 'Active',
         lastLogin: '-',
-        avatar: ''
+        avatar: '',
+        department: userData.department || ''
       }
       users.value.push(newUser)
       return newUser
     } catch (err) {
       console.error('Failed to create user:', err)
-      error.value = err.message
+      error.value = err.response?.data?.message || err.message
       throw err
     } finally {
       loading.value = false

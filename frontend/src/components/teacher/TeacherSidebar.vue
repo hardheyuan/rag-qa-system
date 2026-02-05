@@ -99,7 +99,7 @@ const menuItems = [
   { name: 'dashboard', label: '概览面板', icon: 'dashboard', route: '/teacher', badge: null },
   { name: 'documents', label: '文档管理', icon: 'description', route: '/teacher/documents', badge: null },
   { name: 'analytics', label: '数据分析', icon: 'analytics', route: '/teacher', badge: null },
-  { name: 'students', label: '学生管理', icon: 'groups', route: '/teacher', badge: 3 },
+  { name: 'students', label: '学生管理', icon: 'groups', route: '/teacher/students', badge: null },
 ]
 
 // Check if a route is currently active

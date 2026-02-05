@@ -94,10 +94,6 @@ WHERE role IS NULL OR role = '';
 -- 第4部分: 验证修复结果
 -- ============================================
 
-\echo '\n==========================================='
-\echo '修复结果验证'
-\echo '==========================================='
-
 -- 验证role字段
 SELECT
     't_user.role字段' as "检查项",
@@ -117,19 +113,7 @@ SELECT
     END as "状态";
 
 -- 统计信息
-\echo '\n--- 数据统计 ---'
+SELECT '数据统计' as "信息", (SELECT COUNT(*) FROM t_user) as "用户数";
+SELECT '文档数' as "信息", (SELECT COUNT(*) FROM t_document) as "数量";
 
-SELECT 't_user' as "表名", COUNT(*) as "记录数" FROM t_user
-UNION ALL
-SELECT 't_document', COUNT(*) FROM t_document
-UNION ALL
-SELECT 't_document_chunk', COUNT(*) FROM t_document_chunk
-UNION ALL
-SELECT 't_vector_record', COUNT(*) FROM t_vector_record
-UNION ALL
-SELECT 't_qa_history', COUNT(*) FROM t_qa_history
-UNION ALL
-SELECT 't_citation', COUNT(*) FROM t_citation
-ORDER BY 1;
-
-\echo '\n修复脚本执行完成！'
+-- 修复脚本执行完成

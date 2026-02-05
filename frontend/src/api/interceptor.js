@@ -1,11 +1,31 @@
 import api from './axios'
 import { useUserStore } from '@/stores/user'
 import router from '@/router'
+import { handleApiError, getErrorMessage } from '@/utils/errorHandler'
 
 // 用于标记是否正在刷新Token，防止重复请求
 let isRefreshing = false
 // 存储等待刷新完成的请求队列
 let refreshSubscribers = []
+
+/**
+ * 需要静默处理的错误（不显示全局 Toast）
+ * 这些错误由各组件自行处理
+ */
+const SILENT_ERROR_URLS = [
+  '/teacher/students', // 教师学生管理相关 API 由组件处理
+  '/auth/login',       // 登录错误由登录页面处理
+  '/auth/register'     // 注册错误由注册页面处理
+]
+
+/**
+ * 检查是否应该静默处理错误
+ * @param {string} url 请求 URL
+ * @returns {boolean} 是否静默处理
+ */
+function shouldSilentError(url) {
+  return SILENT_ERROR_URLS.some(path => url?.includes(path))
+}
 
 /**
  * 将等待的请求加入队列
@@ -48,6 +68,7 @@ api.interceptors.request.use(
  * 响应拦截器
  * 
  * 处理Token过期情况，自动使用Refresh Token换取新Token
+ * 处理常见的 HTTP 错误码，显示友好的中文错误消息
  */
 api.interceptors.response.use(
   (response) => {
@@ -61,82 +82,133 @@ api.interceptors.response.use(
     const isAuthRequest = requestUrl.startsWith('/auth/')
     const isLogoutRequest = requestUrl === '/auth/logout'
     
-    // 如果不是401错误，或者没有配置，直接返回错误
-    if (!error.response || error.response.status !== 401) {
+    // 获取响应状态码
+    const status = error.response?.status
+    
+    // 处理网络错误（无响应）
+    if (!error.response) {
+      // 只对非静默 URL 显示全局错误
+      if (!shouldSilentError(requestUrl)) {
+        handleApiError(error, { showToast: true })
+      }
       return Promise.reject(error)
     }
 
-    // 登录/注册/刷新/登出请求不做刷新处理，避免循环
-    if (isAuthRequest) {
-      if (isLogoutRequest) {
+    // 处理 401 未授权错误
+    if (status === 401) {
+      // 登录/注册/刷新/登出请求不做刷新处理，避免循环
+      if (isAuthRequest) {
+        if (isLogoutRequest) {
+          const userStore = useUserStore()
+          userStore.clearAuth()
+          router.push('/login')
+        }
+        return Promise.reject(error)
+      }
+      
+      // 如果请求已经尝试过刷新Token，不再重复尝试
+      if (originalRequest._retry) {
+        // 清除认证状态并跳转到登录页
         const userStore = useUserStore()
         userStore.clearAuth()
         router.push('/login')
+        return Promise.reject(error)
+      }
+      
+      // 标记请求已经尝试过刷新
+      originalRequest._retry = true
+      
+      const userStore = useUserStore()
+      
+      // 如果没有Refresh Token，直接登出
+      if (!userStore.refreshToken) {
+        userStore.clearAuth()
+        router.push('/login')
+        return Promise.reject(error)
+      }
+      
+      // 如果正在刷新Token，将请求加入队列等待
+      if (isRefreshing) {
+        return new Promise((resolve) => {
+          subscribeTokenRefresh((newToken) => {
+            originalRequest.headers.Authorization = `Bearer ${newToken}`
+            resolve(api(originalRequest))
+          })
+        })
+      }
+      
+      // 开始刷新Token
+      isRefreshing = true
+      
+      try {
+        // 调用刷新接口
+        const response = await api.post('/auth/refresh', {
+          refreshToken: userStore.refreshToken
+        })
+        
+        const { accessToken } = response.data
+        
+        // 更新存储的Access Token
+        userStore.setAccessToken(accessToken)
+        
+        // 通知等待的请求使用新Token
+        onTokenRefreshed(accessToken)
+        
+        // 重试原始请求
+        originalRequest.headers.Authorization = `Bearer ${accessToken}`
+        return api(originalRequest)
+        
+      } catch (refreshError) {
+        // 刷新失败，清除所有认证信息并跳转登录页
+        userStore.clearAuth()
+        router.push('/login')
+        return Promise.reject(refreshError)
+        
+      } finally {
+        isRefreshing = false
+      }
+    }
+    
+    // 处理 403 禁止访问错误
+    if (status === 403) {
+      // 只对非静默 URL 显示全局错误
+      if (!shouldSilentError(requestUrl)) {
+        handleApiError(error, { showToast: true })
       }
       return Promise.reject(error)
     }
     
-    // 如果请求已经尝试过刷新Token，不再重复尝试
-    if (originalRequest._retry) {
-      // 清除认证状态并跳转到登录页
-      const userStore = useUserStore()
-      userStore.clearAuth()
-      router.push('/login')
+    // 处理 404 资源不存在错误
+    if (status === 404) {
+      // 只对非静默 URL 显示全局错误
+      if (!shouldSilentError(requestUrl)) {
+        handleApiError(error, { showToast: true })
+      }
       return Promise.reject(error)
     }
     
-    // 标记请求已经尝试过刷新
-    originalRequest._retry = true
-    
-    const userStore = useUserStore()
-    
-    // 如果没有Refresh Token，直接登出
-    if (!userStore.refreshToken) {
-      userStore.clearAuth()
-      router.push('/login')
+    // 处理 400 请求参数错误
+    if (status === 400) {
+      // 只对非静默 URL 显示全局错误
+      if (!shouldSilentError(requestUrl)) {
+        handleApiError(error, { showToast: true })
+      }
       return Promise.reject(error)
     }
     
-    // 如果正在刷新Token，将请求加入队列等待
-    if (isRefreshing) {
-      return new Promise((resolve) => {
-        subscribeTokenRefresh((newToken) => {
-          originalRequest.headers.Authorization = `Bearer ${newToken}`
-          resolve(api(originalRequest))
-        })
-      })
+    // 处理 500 服务器错误
+    if (status >= 500) {
+      // 服务器错误始终显示全局提示
+      handleApiError(error, { showToast: true })
+      return Promise.reject(error)
     }
     
-    // 开始刷新Token
-    isRefreshing = true
-    
-    try {
-      // 调用刷新接口
-      const response = await api.post('/auth/refresh', {
-        refreshToken: userStore.refreshToken
-      })
-      
-      const { accessToken } = response.data
-      
-      // 更新存储的Access Token
-      userStore.setAccessToken(accessToken)
-      
-      // 通知等待的请求使用新Token
-      onTokenRefreshed(accessToken)
-      
-      // 重试原始请求
-      originalRequest.headers.Authorization = `Bearer ${accessToken}`
-      return api(originalRequest)
-      
-    } catch (refreshError) {
-      // 刷新失败，清除所有认证信息并跳转登录页
-      userStore.clearAuth()
-      router.push('/login')
-      return Promise.reject(refreshError)
-      
-    } finally {
-      isRefreshing = false
+    // 其他错误
+    if (!shouldSilentError(requestUrl)) {
+      handleApiError(error, { showToast: true })
     }
+    
+    return Promise.reject(error)
   }
 )
 

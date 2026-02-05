@@ -11,7 +11,7 @@ spring:
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:rag_qa_system}
     username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:}
+    password: ${DB_PASSWORD:Qwe2003413.}
     driver-class-name: org.postgresql.Driver
     hikari:
       pool-name: RAG-QA-HikariPool
@@ -77,7 +77,8 @@ server:
 langchain4j:
   modelscope:
     # ModelScope API Key
-    api-key: ${MODELSCOPE_API_KEY:}
+    # 开发环境：直接填写你的 API Key，或通过环境变量 MODELSCOPE_API_KEY 设置
+    api-key: ${MODELSCOPE_API_KEY:ms-faa7e7c9-af12-497c-8e8f-fc829e56f1b2}
     
     # API Base URL (ModelScope OpenAI 兼容接口)
     base-url: https://api-inference.modelscope.cn/v1
@@ -177,8 +178,9 @@ management:
 
 jwt:
   # JWT 签名密钥（从环境变量读取，生产环境必须设置）
-  # 至少32个字符的Base64编码字符串
-  secret: ${JWT_SECRET:}
+  # HS512 算法要求至少 512 位（64 字节）的密钥
+  # 注意：开发环境使用默认密钥，生产环境必须设置 JWT_SECRET 环境变量！
+  secret: ${JWT_SECRET:superSecretKeyForDevelopmentOnlyChangeInProduction2024PleaseUseStrongRandomKeyInProductionEnvironmentForBetterSecurity}
   
   # Access Token 配置（用于API认证，短期有效）
   access-token:
