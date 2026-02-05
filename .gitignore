@@ -106,3 +106,6 @@ frontend-copysource/
 # Invalid directory artifacts
 nul
 D:desktopmyProject*/
+
+# Documentation with sensitive information
+docs/plans/
