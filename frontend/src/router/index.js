@@ -8,6 +8,7 @@ import TeacherStudentDetailView from '../views/teacher/TeacherStudentDetailView.
 import LoginView from '../views/LoginView.vue'
 import AdminUsersView from '../views/admin/AdminUsersView.vue'
 import AdminDocumentsView from '../views/admin/AdminDocumentsView.vue'
+import AdminAiModelsView from '../views/admin/AdminAiModelsView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -69,8 +70,8 @@ const router = createRouter({
     {
       path: '/admin/ai-models',
       name: 'admin-ai-models',
-      component: AdminUsersView,
-      meta: { requiresAuth: true }
+      component: AdminAiModelsView,
+      meta: { requiresAuth: true, requiresAdmin: true }
     },
     {
       path: '/admin/settings',

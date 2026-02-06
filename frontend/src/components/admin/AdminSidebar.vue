@@ -83,7 +83,7 @@ const route = useRoute()
 const menuItems = [
   { name: 'users', label: '用户管理', icon: 'group', route: '/admin', comingSoon: false },
   { name: 'documents', label: '文档管理', icon: 'folder', route: '/admin/documents', comingSoon: false },
-  { name: 'ai-models', label: 'AI 模型', icon: 'smart_toy', route: '/admin/ai-models', comingSoon: true },
+  { name: 'ai-models', label: 'AI 模型', icon: 'smart_toy', route: '/admin/ai-models', comingSoon: false },
   { name: 'settings', label: '系统设置', icon: 'settings', route: '/admin/settings', comingSoon: true },
 ]
 
