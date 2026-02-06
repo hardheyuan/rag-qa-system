@@ -1,6 +1,9 @@
 package com.hiyuan.demo1.config;
 
+import com.hiyuan.demo1.entity.AiProviderConfig;
+import com.hiyuan.demo1.repository.AiProviderConfigRepository;
 import com.hiyuan.demo1.service.EmbeddingService;
+import com.hiyuan.demo1.util.AesEncryptionUtil;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.chat.ChatLanguageModel;
@@ -15,60 +18,104 @@ import org.springframework.context.annotation.Configuration;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
- * LangChain4j 配置类 - 硅基流动 SiliconFlow 版本
+ * LangChain4j 配置类 - 支持多AI提供商切换
  *
- * 使用 SiliconFlow 的 OpenAI 兼容接口
- * 支持各种开源模型：DeepSeek、GLM、Qwen 等
+ * 从数据库加载激活的配置，如果没有则使用application.yml默认值
  *
  * @author 开发团队
- * @version 3.0.0
+ * @version 3.1.0
  */
 @Slf4j
 @Configuration
 public class LangChain4jConfig {
 
-    @Value("${langchain4j.modelscope.api-key}")
-    private String apiKey;
+    @Value("${langchain4j.modelscope.api-key:}")
+    private String defaultApiKey;
 
-    @Value("${langchain4j.modelscope.base-url}")
-    private String baseUrl;
+    @Value("${langchain4j.modelscope.base-url:}")
+    private String defaultBaseUrl;
 
-    @Value("${langchain4j.modelscope.chat-model}")
-    private String chatModel;
+    @Value("${langchain4j.modelscope.chat-model:}")
+    private String defaultChatModel;
 
-    @Value("${langchain4j.modelscope.embedding-model}")
+    @Value("${langchain4j.modelscope.embedding-model:}")
     private String embeddingModel;
 
     @Value("${langchain4j.modelscope.temperature:0.7}")
-    private double temperature;
+    private double defaultTemperature;
 
     @Value("${langchain4j.modelscope.max-tokens:2048}")
-    private int maxTokens;
+    private int defaultMaxTokens;
 
     /**
      * 配置聊天语言模型 (ChatLanguageModel)
-     * 使用 SiliconFlow 的 OpenAI 兼容接口
+     * 优先从数据库加载配置，如果没有则使用application.yml默认值
      */
     @Bean
-    public ChatLanguageModel chatLanguageModel() {
-        log.info("初始化 ChatLanguageModel - SiliconFlow (硅基流动)");
-        log.info("Base URL: {}", baseUrl);
-        log.info("模型: {}", chatModel);
+    public ChatLanguageModel chatLanguageModel(
+            AiProviderConfigRepository configRepository,
+            AesEncryptionUtil encryptionUtil) {
+        
+        // 尝试从数据库获取激活配置
+        Optional<AiProviderConfig> activeConfig = configRepository.findByIsActiveTrue();
+        
+        if (activeConfig.isPresent()) {
+            AiProviderConfig config = activeConfig.get();
+            log.info("从数据库加载AI配置 - 提供商: {}, 模型: {}", 
+                config.getProviderCode(), config.getChatModel());
+            
+            try {
+                // 解密API密钥
+                String decryptedApiKey = encryptionUtil.decrypt(config.getApiKey());
+                
+                double temperature = config.getTemperature() != null 
+                    ? config.getTemperature().doubleValue() 
+                    : 0.7;
+                int maxTokens = config.getMaxTokens() != null 
+                    ? config.getMaxTokens() 
+                    : 2048;
+                
+                validateApiKey(decryptedApiKey);
+                
+                ChatLanguageModel model = OpenAiChatModel.builder()
+                    .baseUrl(config.getBaseUrl())
+                    .apiKey(decryptedApiKey)
+                    .modelName(config.getChatModel())
+                    .temperature(temperature)
+                    .maxTokens(maxTokens)
+                    .timeout(Duration.ofSeconds(60))
+                    .logRequests(false)
+                    .logResponses(false)
+                    .build();
 
-        validateApiKey();
+                log.info("ChatLanguageModel ({}) 初始化成功", config.getProviderCode());
+                return model;
+                
+            } catch (Exception e) {
+                log.error("从数据库加载配置失败: {}，回退到默认配置", e.getMessage());
+            }
+        }
+        
+        // 使用application.yml中的默认配置
+        log.info("使用默认AI配置 - SiliconFlow (硅基流动)");
+        log.info("Base URL: {}", defaultBaseUrl);
+        log.info("模型: {}", defaultChatModel);
+
+        validateApiKey(defaultApiKey);
 
         ChatLanguageModel model = OpenAiChatModel.builder()
-                .apiKey(apiKey)
-                .baseUrl(baseUrl)
-                .modelName(chatModel)
-                .temperature(temperature)
-                .maxTokens(maxTokens)
-                .timeout(Duration.ofSeconds(60))
-                .logRequests(false)
-                .logResponses(false)
-                .build();
+            .apiKey(defaultApiKey)
+            .baseUrl(defaultBaseUrl)
+            .modelName(defaultChatModel)
+            .temperature(defaultTemperature)
+            .maxTokens(defaultMaxTokens)
+            .timeout(Duration.ofSeconds(60))
+            .logRequests(false)
+            .logResponses(false)
+            .build();
 
         log.info("ChatLanguageModel (SiliconFlow) 初始化成功");
         return model;
@@ -76,14 +123,14 @@ public class LangChain4jConfig {
 
     /**
      * 配置嵌入模型 (EmbeddingModel)
-     * 使用 SiliconFlow 的 OpenAI 兼容接口
+     * 使用 SiliconFlow 的 OpenAI 兼容接口（暂不支持切换）
      */
     @Bean
     public EmbeddingModel embeddingModel(EmbeddingService embeddingService) {
         log.info("初始化 EmbeddingModel - SiliconFlow (硅基流动)");
         log.info("嵌入模型: {}", embeddingModel);
 
-        validateApiKey();
+        validateApiKey(defaultApiKey);
 
         EmbeddingModel model = new EmbeddingModel() {
             @Override
@@ -119,12 +166,11 @@ public class LangChain4jConfig {
     /**
      * 验证 API Key 是否配置
      */
-    private void validateApiKey() {
-        if (apiKey == null || apiKey.isEmpty() || apiKey.startsWith("your-")) {
-            log.error("SiliconFlow API Key 未配置！");
-            log.error("请在 application.yml 中配置 langchain4j.modelscope.api-key");
-            log.error("获取 API Key: https://cloud.siliconflow.cn/account/ak");
-            throw new IllegalStateException("SiliconFlow API Key 未配置");
+    private void validateApiKey(String apiKey) {
+        if (apiKey == null || apiKey.isEmpty() || apiKey.startsWith("your-") || apiKey.equals("dummy-key")) {
+            log.error("API Key 未配置或无效！");
+            log.error("请在管理后台配置AI提供商，或在 application.yml 中配置 langchain4j.modelscope.api-key");
+            throw new IllegalStateException("API Key 未配置");
         }
     }
 }
