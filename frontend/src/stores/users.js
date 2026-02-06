@@ -136,7 +136,17 @@ export const useUsersStore = defineStore('users', () => {
       // 使用配置了JWT拦截器的 api 实例
       const response = await api.get('/users')
       const data = response.data
-      users.value = data.data || data
+      const userList = data.data || data
+      users.value = userList.map(user => ({
+        id: user.id,
+        name: user.name || user.username || '',
+        email: user.email || '',
+        role: (user.role || 'STUDENT').toUpperCase(),
+        status: user.status || 'Active',
+        lastLogin: user.lastLogin || '-',
+        avatar: user.avatar || '',
+        department: user.department || ''
+      }))
       backendAvailable.value = true
     } catch (err) {
       console.error('Failed to fetch users:', err)
@@ -155,40 +165,44 @@ export const useUsersStore = defineStore('users', () => {
     error.value = null
 
     try {
-      if (backendAvailable.value) {
-        // 调用注册API，需要将字段映射到后端期望的格式
-        const registerData = {
-          username: userData.name, // 使用name作为username
-          email: userData.email,
-          password: userData.password,
-          role: userData.role.toUpperCase() // 转换为大写：ADMIN, TEACHER, STUDENT
-        }
-        
-        const response = await api.post('/auth/register', registerData)
-        const data = response.data
-        
-        // 将返回的用户数据添加到列表
-        const newUser = {
-          id: data.user?.id || String(Date.now()),
-          name: data.user?.username || userData.name,
-          email: data.user?.email || userData.email,
-          role: data.user?.role || userData.role.toUpperCase(),
-          status: userData.status || 'Active',
-          lastLogin: '-',
-          avatar: '',
-          department: userData.department || ''
-        }
-        users.value.push(newUser)
-        return newUser
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/183555b4-90b7-428c-b1a7-93c4a6b0c40e', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: 'debug-session',
+          runId: 'initial',
+          hypothesisId: 'H3',
+          location: 'frontend/src/stores/users.js:createUser',
+          message: 'createUser called',
+          data: {
+            name: userData?.name,
+            email: userData?.email,
+            role: userData?.role,
+            status: userData?.status
+          },
+          timestamp: Date.now()
+        })
+      }).catch(() => {})
+      // #endregion
+      // 调用注册API，需要将字段映射到后端期望的格式
+      const registerData = {
+        username: userData.name, // 使用name作为username
+        email: userData.email,
+        password: userData.password,
+        role: userData.role.toUpperCase() // 转换为大写：ADMIN, TEACHER, STUDENT
       }
 
-      // Mock creation
-      await new Promise(resolve => setTimeout(resolve, 300))
+      const response = await api.post('/auth/register', registerData)
+      const data = response.data
+      backendAvailable.value = true
+
+      // 将返回的用户数据添加到列表
       const newUser = {
-        id: String(Date.now()),
-        name: userData.name,
-        email: userData.email,
-        role: userData.role.toUpperCase(),
+        id: data.user?.id || String(Date.now()),
+        name: data.user?.username || userData.name,
+        email: data.user?.email || userData.email,
+        role: data.user?.role || userData.role.toUpperCase(),
         status: userData.status || 'Active',
         lastLogin: '-',
         avatar: '',
@@ -198,7 +212,45 @@ export const useUsersStore = defineStore('users', () => {
       return newUser
     } catch (err) {
       console.error('Failed to create user:', err)
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/183555b4-90b7-428c-b1a7-93c4a6b0c40e', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: 'debug-session',
+          runId: 'initial',
+          hypothesisId: 'H4',
+          location: 'frontend/src/stores/users.js:createUser',
+          message: 'createUser failed',
+          data: {
+            message: err?.message,
+            status: err?.response?.status,
+            url: err?.config?.url
+          },
+          timestamp: Date.now()
+        })
+      }).catch(() => {})
+      // #endregion
       error.value = err.response?.data?.message || err.message
+
+      // 只有在后端不可用时才使用Mock数据
+      if (!err.response) {
+        backendAvailable.value = false
+        await new Promise(resolve => setTimeout(resolve, 300))
+        const newUser = {
+          id: String(Date.now()),
+          name: userData.name,
+          email: userData.email,
+          role: userData.role.toUpperCase(),
+          status: userData.status || 'Active',
+          lastLogin: '-',
+          avatar: '',
+          department: userData.department || ''
+        }
+        users.value.push(newUser)
+        return newUser
+      }
+
       throw err
     } finally {
       loading.value = false
@@ -231,6 +283,11 @@ export const useUsersStore = defineStore('users', () => {
       throw new Error('User not found')
     } catch (err) {
       console.error('Failed to update user:', err)
+      // 处理后端返回的具体错误信息
+      if (err.response?.data?.message) {
+        error.value = err.response.data.message
+        throw new Error(err.response.data.message)
+      }
       error.value = err.message
       throw err
     } finally {
@@ -248,14 +305,18 @@ export const useUsersStore = defineStore('users', () => {
         await api.delete(`/users/${userId}`)
       }
 
-      // Mock delete
-      await new Promise(resolve => setTimeout(resolve, 300))
+      // 从本地列表中移除（无论后端是否调用成功，都更新UI）
       const index = users.value.findIndex(u => u.id === userId)
       if (index !== -1) {
         users.value.splice(index, 1)
       }
     } catch (err) {
       console.error('Failed to delete user:', err)
+      // 处理后端返回的具体错误信息
+      if (err.response?.data?.message) {
+        error.value = err.response.data.message
+        throw new Error(err.response.data.message)
+      }
       error.value = err.message
       throw err
     } finally {

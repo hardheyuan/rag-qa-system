@@ -17,11 +17,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * LangChain4j 配置类 - 魔搭社区 ModelScope 版本
- * 
- * 使用 ModelScope 的 OpenAI 兼容接口
+ * LangChain4j 配置类 - 硅基流动 SiliconFlow 版本
+ *
+ * 使用 SiliconFlow 的 OpenAI 兼容接口
  * 支持各种开源模型：DeepSeek、GLM、Qwen 等
- * 
+ *
  * @author 开发团队
  * @version 3.0.0
  */
@@ -49,16 +49,16 @@ public class LangChain4jConfig {
 
     /**
      * 配置聊天语言模型 (ChatLanguageModel)
-     * 使用 ModelScope 的 OpenAI 兼容接口
+     * 使用 SiliconFlow 的 OpenAI 兼容接口
      */
     @Bean
     public ChatLanguageModel chatLanguageModel() {
-        log.info("初始化 ChatLanguageModel - ModelScope (魔搭社区)");
+        log.info("初始化 ChatLanguageModel - SiliconFlow (硅基流动)");
         log.info("Base URL: {}", baseUrl);
         log.info("模型: {}", chatModel);
-        
+
         validateApiKey();
-        
+
         ChatLanguageModel model = OpenAiChatModel.builder()
                 .apiKey(apiKey)
                 .baseUrl(baseUrl)
@@ -69,18 +69,18 @@ public class LangChain4jConfig {
                 .logRequests(false)
                 .logResponses(false)
                 .build();
-        
-        log.info("ChatLanguageModel (ModelScope) 初始化成功");
+
+        log.info("ChatLanguageModel (SiliconFlow) 初始化成功");
         return model;
     }
 
     /**
      * 配置嵌入模型 (EmbeddingModel)
-     * 使用 ModelScope 的 OpenAI 兼容接口
+     * 使用 SiliconFlow 的 OpenAI 兼容接口
      */
     @Bean
     public EmbeddingModel embeddingModel(EmbeddingService embeddingService) {
-        log.info("初始化 EmbeddingModel - ModelScope (魔搭社区)");
+        log.info("初始化 EmbeddingModel - SiliconFlow (硅基流动)");
         log.info("嵌入模型: {}", embeddingModel);
 
         validateApiKey();
@@ -112,7 +112,7 @@ public class LangChain4jConfig {
             }
         };
 
-        log.info("EmbeddingModel (ModelScope) 初始化成功");
+        log.info("EmbeddingModel (SiliconFlow) 初始化成功");
         return model;
     }
     
@@ -121,10 +121,10 @@ public class LangChain4jConfig {
      */
     private void validateApiKey() {
         if (apiKey == null || apiKey.isEmpty() || apiKey.startsWith("your-")) {
-            log.error("ModelScope API Key 未配置！");
+            log.error("SiliconFlow API Key 未配置！");
             log.error("请在 application.yml 中配置 langchain4j.modelscope.api-key");
-            log.error("获取 API Key: https://www.modelscope.cn/my/myaccesstoken");
-            throw new IllegalStateException("ModelScope API Key 未配置");
+            log.error("获取 API Key: https://cloud.siliconflow.cn/account/ak");
+            throw new IllegalStateException("SiliconFlow API Key 未配置");
         }
     }
 }

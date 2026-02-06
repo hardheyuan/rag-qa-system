@@ -72,23 +72,23 @@ server:
       min-spare: 10
 
 # ==================== LangChain4j 配置 ====================
-# 使用魔搭社区 ModelScope OpenAI 兼容接口
+# 使用硅基流动 SiliconFlow OpenAI 兼容接口
 
 langchain4j:
   modelscope:
-    # ModelScope API Key
-    # 开发环境：直接填写你的 API Key，或通过环境变量 MODELSCOPE_API_KEY 设置
-    api-key: ${MODELSCOPE_API_KEY:ms-faa7e7c9-af12-497c-8e8f-fc829e56f1b2}
-    
-    # API Base URL (ModelScope OpenAI 兼容接口)
-    base-url: https://api-inference.modelscope.cn/v1
-    
+    # SiliconFlow API Key
+    # 开发环境：直接填写你的 API Key，或通过环境变量 SILICONFLOW_API_KEY 设置
+    api-key: ${SILICONFLOW_API_KEY:sk-lhplnjrpzrelsvdcymgjwnzfueccxtwtcjlyzhovvoaoqscw}
+
+    # API Base URL (SiliconFlow OpenAI 兼容接口)
+    base-url: https://api.siliconflow.cn/v1
+
     # 聊天模型配置
-    chat-model: deepseek-ai/DeepSeek-R1-0528
-    
+    chat-model: deepseek-ai/DeepSeek-V3
+
     # 嵌入模型配置
     embedding-model: Qwen/Qwen3-Embedding-0.6B
-    
+
     # 生成参数
     temperature: 0.7          # 生成温度 (0-1)，越高越随机
     max-tokens: 2048          # 最大输出 token 数

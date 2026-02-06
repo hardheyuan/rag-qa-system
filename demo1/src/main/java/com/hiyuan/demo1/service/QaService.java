@@ -173,7 +173,7 @@ public class QaService {
             history.setUser(user);
             history.setQuestion(request.getQuestion());
             history.setAnswer(answer);
-            history.setModelVersion("ModelScope DeepSeek-R1");
+            history.setModelVersion("SiliconFlow DeepSeek-V3");
             history.setResponseTime((int) (System.currentTimeMillis() - startTime));
 
             try {

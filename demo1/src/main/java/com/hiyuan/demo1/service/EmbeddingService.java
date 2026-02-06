@@ -83,12 +83,15 @@ public class EmbeddingService {
                         .post()
                         .uri("/embeddings")
                         .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.APPLICATION_JSON)
                         .bodyValue(Map.of(
                                 "model", embeddingModel,
                                 "input", text,
                                 "encoding_format", "float"))
-                        .exchangeToMono(response -> response.bodyToMono(String.class))
-                        .block(Duration.ofSeconds(60));
+                        .retrieve()
+                        .bodyToMono(String.class)
+                        .timeout(Duration.ofSeconds(60))
+                        .block();
 
                 if (responseBody == null || responseBody.isEmpty()) {
                     throw new RuntimeException("嵌入接口返回空响应");
@@ -212,12 +215,15 @@ public class EmbeddingService {
                         .post()
                         .uri("/embeddings")
                         .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.APPLICATION_JSON)
                         .bodyValue(Map.of(
                                 "model", embeddingModel,
                                 "input", texts,
                                 "encoding_format", "float"))
-                        .exchangeToMono(response -> response.bodyToMono(String.class))
-                        .block(Duration.ofSeconds(60));
+                        .retrieve()
+                        .bodyToMono(String.class)
+                        .timeout(Duration.ofSeconds(60))
+                        .block();
 
                 if (responseBody == null || responseBody.isEmpty()) {
                     throw new RuntimeException("嵌入接口返回空响应");
@@ -330,10 +336,10 @@ public class EmbeddingService {
 
     /**
      * 获取模型信息
-     * 
+     *
      * @return 模型信息描述
      */
     public String getModelInfo() {
-        return "ModelScope OpenAI-Compatible Embedding";
+        return "SiliconFlow OpenAI-Compatible Embedding";
     }
 }

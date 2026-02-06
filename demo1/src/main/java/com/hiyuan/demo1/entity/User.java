@@ -145,7 +145,8 @@ public class User extends BaseEntity {
      * - 统计用户文档数量：user.getDocuments().size()
      */
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
-    @Builder.Default  // Builder模式的默认值
+    @Builder.Default
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private List<Document> documents = new ArrayList<>();
 
     /**
@@ -162,6 +163,7 @@ public class User extends BaseEntity {
      */
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private List<QaHistory> qaHistories = new ArrayList<>();
     
     /*

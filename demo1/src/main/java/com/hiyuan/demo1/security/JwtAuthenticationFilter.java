@@ -13,6 +13,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+
 import java.io.IOException;
 import java.util.Collections;
 import java.util.UUID;
@@ -47,6 +49,24 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             // 1. 从请求中获取 JWT Token
             String jwt = getJwtFromRequest(request);
 
+            // #region agent log
+            try {
+                java.nio.file.Path __logPath = java.nio.file.Paths.get("d:\\desktop\\myProject\\.cursor\\debug.log");
+                java.nio.file.Files.createDirectories(__logPath.getParent());
+                java.nio.file.Files.writeString(
+                        __logPath,
+                        "{\"sessionId\":\"debug-session\",\"runId\":\"initial\",\"hypothesisId\":\"H5\",\"location\":\"JwtAuthenticationFilter.java:52\",\"message\":\"JWT filter invoked\",\"data\":{\"uri\":\""
+                                + request.getRequestURI() + "\",\"hasAuthorizationHeader\":"
+                                + (request.getHeader("Authorization") != null) + ",\"hasToken\":"
+                                + (jwt != null) + "},\"timestamp\":" + System.currentTimeMillis() + "}\n",
+                        java.nio.charset.StandardCharsets.UTF_8,
+                        java.nio.file.StandardOpenOption.CREATE,
+                        java.nio.file.StandardOpenOption.APPEND
+                );
+            } catch (Exception ignored) {
+            }
+            // #endregion
+
             // 2. 验证 Token 并设置认证信息
             if (StringUtils.hasText(jwt) && jwtTokenProvider.validateToken(jwt)) {
                 // 3. 从 Token 中提取用户信息
@@ -62,7 +82,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         new UsernamePasswordAuthenticationToken(
                                 userPrincipal,
                                 null,
-                                Collections.singletonList(role::getSpringSecurityRole)
+                                userPrincipal.getAuthorities()
                         );
 
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
@@ -104,20 +124,31 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         // 公开路径不需要 JWT 验证
         String path = request.getRequestURI();
+        String contextPath = request.getContextPath();
+        
+        // 移除 context-path（如果有）
+        if (path.startsWith(contextPath) && !contextPath.isEmpty()) {
+            path = path.substring(contextPath.length());
+        }
+        
+        // 如果路径以 /api 开头（测试环境contextPath为空时），也去掉它
+        if (path.startsWith("/api")) {
+            path = path.substring(4); // 去掉 "/api"
+        }
+        
+        log.debug("shouldNotFilter check - normalized path: {}, original: {}, contextPath: '{}'", 
+                  path, request.getRequestURI(), contextPath);
 
-        // 仅放行登录/注册/刷新
-        if (path.equals("/api/auth/login") ||
-            path.equals("/api/auth/register") ||
-            path.equals("/api/auth/refresh") ||
-            path.equals("/auth/login") ||
-            path.equals("/auth/register") ||
+        // 仅放行登录和刷新，注册需要管理员权限
+        if (path.equals("/auth/login") ||
             path.equals("/auth/refresh")) {
+            log.debug(" shouldNotFilter = true (auth endpoint)");
             return true;
         }
 
-        return path.startsWith("/api/public/") ||
-               path.startsWith("/public/") ||
-               path.equals("/api/actuator/health") ||
+        boolean shouldSkip = path.startsWith("/public/") ||
                path.equals("/actuator/health");
+        log.debug(" shouldNotFilter = {}", shouldSkip);
+        return shouldSkip;
     }
 }

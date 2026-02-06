@@ -63,6 +63,22 @@ public class AuthController {
     @PostMapping("/register")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<AuthResponse> register(@RequestBody @Valid RegisterRequest request) {
+        // #region agent log
+        try {
+            java.nio.file.Path __logPath = java.nio.file.Paths.get(System.getProperty("user.dir"), ".cursor", "debug.log");
+            java.nio.file.Files.createDirectories(__logPath.getParent());
+            java.nio.file.Files.writeString(
+                    __logPath,
+                    "{\"sessionId\":\"debug-session\",\"runId\":\"initial\",\"hypothesisId\":\"H1\",\"location\":\"AuthController.java:65\",\"message\":\"register called\",\"data\":{\"username\":\""
+                            + request.getUsername() + "\",\"role\":\"" + request.getRole()
+                            + "\"},\"timestamp\":" + System.currentTimeMillis() + "}\n",
+                    java.nio.charset.StandardCharsets.UTF_8,
+                    java.nio.file.StandardOpenOption.CREATE,
+                    java.nio.file.StandardOpenOption.APPEND
+            );
+        } catch (Exception ignored) {
+        }
+        // #endregion
         log.info("Registration request received for user: {}", request.getUsername());
         AuthResponse response = authService.register(request);
         return ResponseEntity.ok(response);

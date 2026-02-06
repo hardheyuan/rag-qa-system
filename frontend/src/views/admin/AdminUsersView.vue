@@ -231,9 +231,9 @@ const usersStore = useUsersStore()
 const searchQuery = ref('')
 const roleFilters = [
   { value: 'All', label: '全部' },
-  { value: 'Admin', label: '管理员' },
-  { value: 'Teacher', label: '教师' },
-  { value: 'Student', label: '学生' }
+  { value: 'ADMIN', label: '管理员' },
+  { value: 'TEACHER', label: '教师' },
+  { value: 'STUDENT', label: '学生' }
 ]
 
 // Modals
@@ -243,7 +243,7 @@ const deletingUser = ref(null)
 
 // Check admin access
 onMounted(() => {
-  if (userStore.user.role !== 'Admin') {
+  if (userStore.user.role !== 'ADMIN') {
     router.push('/')
     return
   }
@@ -265,11 +265,11 @@ function setRoleFilter(role) {
 
 function getRoleClass(role) {
   switch (role) {
-    case 'Admin':
+    case 'ADMIN':
       return 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400'
-    case 'Teacher':
+    case 'TEACHER':
       return 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
-    case 'Student':
+    case 'STUDENT':
       return 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
     default:
       return 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-400'
@@ -278,11 +278,11 @@ function getRoleClass(role) {
 
 function getRoleLabel(role) {
   switch (role) {
-    case 'Admin':
+    case 'ADMIN':
       return '管理员'
-    case 'Teacher':
+    case 'TEACHER':
       return '教师'
-    case 'Student':
+    case 'STUDENT':
       return '学生'
     default:
       return role

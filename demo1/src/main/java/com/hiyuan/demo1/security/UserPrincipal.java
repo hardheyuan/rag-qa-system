@@ -21,13 +21,19 @@ import java.util.UUID;
  * @version 1.0.0
  */
 @Data
-@AllArgsConstructor
 public class UserPrincipal implements UserDetails {
 
     private UUID id;
     private String username;
     private String password;
     private UserRole role;
+
+    public UserPrincipal(UUID id, String username, String password, UserRole role) {
+        this.id = id;
+        this.username = username;
+        this.password = password;
+        this.role = role;
+    }
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {

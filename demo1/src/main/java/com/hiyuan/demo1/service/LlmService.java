@@ -91,6 +91,6 @@ public class LlmService {
      * 获取当前使用的模型信息
      */
     public String getModelInfo() {
-        return "LangChain4j ChatLanguageModel (ModelScope 魔搭社区)";
+        return "LangChain4j ChatLanguageModel (SiliconFlow 硅基流动)";
     }
 }

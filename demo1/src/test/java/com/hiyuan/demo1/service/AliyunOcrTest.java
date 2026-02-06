@@ -1,6 +1,7 @@
 package com.hiyuan.demo1.service;
 
 import com.hiyuan.demo1.util.PdfImageExtractor;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -23,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * 4. 验证响应解析是否正确
  */
 @SpringBootTest
+@Disabled("跳过阿里云OCR测试 - 需要配置ALIYUN_OCR_APPCODE环境变量")
 public class AliyunOcrTest {
 
     @Autowired

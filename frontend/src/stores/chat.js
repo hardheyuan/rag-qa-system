@@ -13,8 +13,19 @@ export const useChatStore = defineStore('chat', () => {
   const conversations = ref([])
   
   const MAX_CONVERSATIONS = 20
-  const STORAGE_KEY = 'rag_conversations'
-  const CURRENT_CHAT_KEY = 'rag_current_chat_id'
+
+  // 根据当前登录用户生成独立的本地存储 key，避免不同账号共享对话
+  function getStorageKey() {
+    const userStore = useUserStore()
+    const userId = userStore.user?.id || 'guest'
+    return `rag_conversations_${userId}`
+  }
+
+  function getCurrentChatKey() {
+    const userStore = useUserStore()
+    const userId = userStore.user?.id || 'guest'
+    return `rag_current_chat_id_${userId}`
+  }
 
   const getChatMessages = computed(() => messages.value)
   
@@ -124,7 +135,7 @@ export const useChatStore = defineStore('chat', () => {
     if (conversation) {
       currentChatId.value = conversation.id
       messages.value = [...conversation.messages]
-      localStorage.setItem(CURRENT_CHAT_KEY, chatId)
+      localStorage.setItem(getCurrentChatKey(), chatId)
       return true
     }
     return false
@@ -225,7 +236,7 @@ export const useChatStore = defineStore('chat', () => {
     
     messages.value = []
     currentChatId.value = null
-    localStorage.removeItem(CURRENT_CHAT_KEY)
+    localStorage.removeItem(getCurrentChatKey())
     
     // 创建新对话
     createNewConversation()
@@ -233,9 +244,31 @@ export const useChatStore = defineStore('chat', () => {
 
   function saveToStorage() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations.value))
+      const userStore = useUserStore()
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/183555b4-90b7-428c-b1a7-93c4a6b0c40e', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: 'debug-session',
+          runId: 'qa-history',
+          hypothesisId: 'H8',
+          location: 'frontend/src/stores/chat.js:saveToStorage',
+          message: 'saving conversations',
+          data: {
+            userId: userStore.user?.id,
+            userRole: userStore.user?.role,
+            conversationsCount: conversations.value.length
+          },
+          timestamp: Date.now()
+        })
+      }).catch(() => {})
+      // #endregion
+
+      localStorage.setItem(getStorageKey(), JSON.stringify(conversations.value))
       if (currentChatId.value) {
-        localStorage.setItem(CURRENT_CHAT_KEY, currentChatId.value)
+        localStorage.setItem(getCurrentChatKey(), currentChatId.value)
       }
     } catch (e) {
       console.error('保存失败', e)
@@ -244,14 +277,37 @@ export const useChatStore = defineStore('chat', () => {
 
   function loadFromStorage() {
     try {
+      const userStore = useUserStore()
+
       // 加载所有对话
-      const saved = localStorage.getItem(STORAGE_KEY)
+      const saved = localStorage.getItem(getStorageKey())
       if (saved) {
         conversations.value = JSON.parse(saved)
       }
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/183555b4-90b7-428c-b1a7-93c4a6b0c40e', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: 'debug-session',
+          runId: 'qa-history',
+          hypothesisId: 'H9',
+          location: 'frontend/src/stores/chat.js:loadFromStorage',
+          message: 'loaded conversations from storage',
+          data: {
+            userId: userStore.user?.id,
+            userRole: userStore.user?.role,
+            hasSaved: !!saved,
+            conversationsCount: conversations.value.length
+          },
+          timestamp: Date.now()
+        })
+      }).catch(() => {})
+      // #endregion
       
       // 加载当前对话ID
-      const savedChatId = localStorage.getItem(CURRENT_CHAT_KEY)
+      const savedChatId = localStorage.getItem(getCurrentChatKey())
       if (savedChatId) {
         const conversation = conversations.value.find(c => c.id === savedChatId)
         if (conversation) {

@@ -75,10 +75,14 @@ public class SecurityConfig {
             // 配置请求授权规则
             .authorizeHttpRequests(auth -> auth
                 // 公开端点 - 不需要认证
-                // 注意：logout 需要认证，已单独配置
-                .requestMatchers("/auth/login", "/auth/register", "/auth/refresh").permitAll()
+                // 注意：logout 和 register 需要认证（register 需要管理员权限）
+                .requestMatchers("/auth/login", "/auth/refresh").permitAll()
+                // 兼容测试环境（无context-path）
+                .requestMatchers("/api/auth/login", "/api/auth/refresh").permitAll()
                 .requestMatchers("/public/**").permitAll()
+                .requestMatchers("/api/public/**").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
+                .requestMatchers("/api/actuator/health").permitAll()
 
                 // 管理员端点
                 .requestMatchers("/admin/**").hasRole("ADMIN")

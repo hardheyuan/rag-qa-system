@@ -1,0 +1,44 @@
+package com.hiyuan.demo1.controller;
+
+import com.hiyuan.demo1.dto.response.ApiResponse;
+import com.hiyuan.demo1.dto.user.UserListResponse;
+import com.hiyuan.demo1.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+import java.util.stream.Collectors;
+
+/**
+ * 用户管理控制器
+ *
+ * 提供管理员查看用户列表的API接口
+ */
+@Slf4j
+@RestController
+@RequestMapping("/users")
+@RequiredArgsConstructor
+@PreAuthorize("hasRole('ADMIN')")
+public class UserController {
+
+    private final UserRepository userRepository;
+
+    /**
+     * 获取用户列表（管理员权限）
+     */
+    @GetMapping
+    public ApiResponse<List<UserListResponse>> getUsers() {
+        log.info("管理员获取用户列表");
+
+        List<UserListResponse> users = userRepository.findAll().stream()
+                .map(UserListResponse::fromUser)
+                .collect(Collectors.toList());
+
+        log.info("返回 {} 个用户", users.size());
+        return ApiResponse.success(users);
+    }
+}

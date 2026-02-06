@@ -45,6 +45,22 @@ public class AuthService {
     public AuthResponse login(LoginRequest request) {
         log.info("Login attempt for user: {}", request.getUsername());
 
+        // #region agent log
+        try {
+            java.nio.file.Path __logPath = java.nio.file.Paths.get("d:\\desktop\\myProject\\.cursor\\debug.log");
+            java.nio.file.Files.createDirectories(__logPath.getParent());
+            java.nio.file.Files.writeString(
+                    __logPath,
+                    "{\"sessionId\":\"debug-session\",\"runId\":\"login-check\",\"hypothesisId\":\"H6\",\"location\":\"AuthService.java:45\",\"message\":\"login called\",\"data\":{\"username\":\""
+                            + request.getUsername() + "\"},\"timestamp\":" + System.currentTimeMillis() + "}\n",
+                    java.nio.charset.StandardCharsets.UTF_8,
+                    java.nio.file.StandardOpenOption.CREATE,
+                    java.nio.file.StandardOpenOption.APPEND
+            );
+        } catch (Exception ignored) {
+        }
+        // #endregion
+
         // 1. 认证用户名和密码
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
@@ -60,6 +76,23 @@ public class AuthService {
         if (!user.getIsActive()) {
             throw new BadCredentialsException("用户已被禁用");
         }
+
+        // #region agent log
+        try {
+            java.nio.file.Path __logPath = java.nio.file.Paths.get("d:\\desktop\\myProject\\.cursor\\debug.log");
+            java.nio.file.Files.createDirectories(__logPath.getParent());
+            java.nio.file.Files.writeString(
+                    __logPath,
+                    "{\"sessionId\":\"debug-session\",\"runId\":\"login-check\",\"hypothesisId\":\"H7\",\"location\":\"AuthService.java:68\",\"message\":\"login success\",\"data\":{\"userId\":\""
+                            + user.getId() + "\",\"role\":\"" + user.getRole()
+                            + "\"},\"timestamp\":" + System.currentTimeMillis() + "}\n",
+                    java.nio.charset.StandardCharsets.UTF_8,
+                    java.nio.file.StandardOpenOption.CREATE,
+                    java.nio.file.StandardOpenOption.APPEND
+            );
+        } catch (Exception ignored) {
+        }
+        // #endregion
 
         // 3. 生成双Token
         String accessToken = jwtTokenProvider.generateAccessToken(user);
@@ -79,6 +112,22 @@ public class AuthService {
      */
     @Transactional
     public AuthResponse register(RegisterRequest request) {
+        // #region agent log
+        try {
+            java.nio.file.Path __logPath = java.nio.file.Paths.get(System.getProperty("user.dir"), ".cursor", "debug.log");
+            java.nio.file.Files.createDirectories(__logPath.getParent());
+            java.nio.file.Files.writeString(
+                    __logPath,
+                    "{\"sessionId\":\"debug-session\",\"runId\":\"initial\",\"hypothesisId\":\"H2\",\"location\":\"AuthService.java:82\",\"message\":\"register service called\",\"data\":{\"username\":\""
+                            + request.getUsername() + "\",\"email\":\"" + request.getEmail() + "\",\"role\":\""
+                            + request.getRole() + "\"},\"timestamp\":" + System.currentTimeMillis() + "}\n",
+                    java.nio.charset.StandardCharsets.UTF_8,
+                    java.nio.file.StandardOpenOption.CREATE,
+                    java.nio.file.StandardOpenOption.APPEND
+            );
+        } catch (Exception ignored) {
+        }
+        // #endregion
         log.info("Registration attempt for user: {}", request.getUsername());
 
         // 1. 检查用户名是否已存在

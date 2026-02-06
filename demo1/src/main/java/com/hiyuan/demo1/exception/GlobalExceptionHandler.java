@@ -103,6 +103,18 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 处理Spring Security访问拒绝异常
+     */
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleAccessDeniedException(
+            org.springframework.security.access.AccessDeniedException ex) {
+        log.warn("访问拒绝: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.forbidden("权限不足，无法访问该资源"));
+    }
+
+    /**
      * 处理参数校验异常（@Valid）
      */
     @ExceptionHandler(MethodArgumentNotValidException.class)

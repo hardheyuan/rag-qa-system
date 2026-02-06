@@ -45,6 +45,7 @@
               v-model="form.password"
               :type="showPassword ? 'text' : 'password'"
               placeholder="至少6位字符"
+              autocomplete="new-password"
               class="w-full h-11 px-4 pr-20 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#111418] text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-primary transition-all"
             />
             <button
@@ -69,6 +70,7 @@
             v-model="form.confirmPassword"
             :type="showPassword ? 'text' : 'password'"
             placeholder="再次输入密码"
+            autocomplete="new-password"
             class="w-full h-11 px-4 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#111418] text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-primary transition-all"
             :class="{ 'border-red-500': form.confirmPassword && form.password !== form.confirmPassword }"
           />
@@ -101,7 +103,7 @@
         </div>
 
         <!-- Department (only for Teacher) -->
-        <div v-if="form.role === 'Teacher'">
+        <div v-if="form.role === 'TEACHER'">
           <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">
             所属院系
           </label>
@@ -179,15 +181,15 @@ const form = ref({
   email: '',
   password: '',
   confirmPassword: '',
-  role: 'Student',
+  role: 'STUDENT',
   department: '',
   status: 'Active'
 })
 
 const roles = [
-  { value: 'Admin', label: '管理员' },
-  { value: 'Teacher', label: '教师' },
-  { value: 'Student', label: '学生' }
+  { value: 'ADMIN', label: '管理员' },
+  { value: 'TEACHER', label: '教师' },
+  { value: 'STUDENT', label: '学生' }
 ]
 
 const statuses = [
