@@ -121,6 +121,40 @@ export const useUserStore = defineStore('user', () => {
     accessToken.value = token
     localStorage.setItem('accessToken', token)
   }
+
+  /**
+   * 使用 Refresh Token 刷新 Access Token
+   * @returns {Promise<string>} 最新 Access Token
+   */
+  async function refreshAccessToken() {
+    if (!refreshToken.value) {
+      throw new Error('缺少 refresh token，无法刷新登录状态')
+    }
+
+    try {
+      const response = await authApi.refreshToken(refreshToken.value)
+      const newAccessToken = response?.data?.accessToken
+      const newRefreshToken = response?.data?.refreshToken
+
+      if (!newAccessToken) {
+        throw new Error('刷新接口未返回 access token')
+      }
+
+      accessToken.value = newAccessToken
+      if (newRefreshToken) {
+        refreshToken.value = newRefreshToken
+      }
+      saveToStorage()
+
+      return newAccessToken
+    } catch (error) {
+      const status = error?.response?.status
+      if (status === 400 || status === 401 || status === 403) {
+        clearState()
+      }
+      throw error
+    }
+  }
   
   /**
    * 获取当前登录用户信息
@@ -237,6 +271,7 @@ export const useUserStore = defineStore('user', () => {
     clearAuth,
     initAuth,
     setAccessToken,
+    refreshAccessToken,
     fetchCurrentUser,
     toggleDarkMode,
     initDarkMode

@@ -236,7 +236,7 @@ const form = ref({
   apiKey: '',
   chatModel: '',
   temperature: 0.7,
-  maxTokens: 2048
+  maxTokens: 4096
 })
 
 // 计算属性
@@ -316,7 +316,7 @@ const closeModal = () => {
     apiKey: '',
     chatModel: '',
     temperature: 0.7,
-    maxTokens: 2048
+    maxTokens: 4096
   }
 }
 

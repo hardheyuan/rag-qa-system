@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/admin/ai-providers")
+@RequestMapping("/admin/ai-providers")
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('ADMIN')")
 public class AiProviderConfigController {
@@ -32,9 +32,11 @@ public class AiProviderConfigController {
     
     @GetMapping("/{id}")
     public ResponseEntity<AiProviderConfigResponse> getConfigById(@PathVariable Long id) {
-        return configService.getConfigById(id)
-            .map(ResponseEntity::ok)
-            .orElse(ResponseEntity.notFound().build());
+        try {
+            return ResponseEntity.ok(configService.getConfigById(id));
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
     }
     
     @GetMapping("/current")
@@ -72,10 +74,12 @@ public class AiProviderConfigController {
     }
     
     @PostMapping("/{id}/activate")
-    public ResponseEntity<Map<String, String>> activateConfig(@PathVariable Long id) {
-        configService.activateConfig(id);
-        Map<String, String> response = new HashMap<>();
-        response.put("message", "配置已激活，请重启应用以应用更改");
-        return ResponseEntity.ok(response);
+    public ResponseEntity<AiProviderConfigResponse> activateConfig(@PathVariable Long id) {
+        return ResponseEntity.ok(configService.activateConfig(id));
+    }
+
+    @PostMapping("/{id}/test")
+    public ResponseEntity<AiProviderStatusResponse> testProviderConnection(@PathVariable Long id) {
+        return ResponseEntity.ok(configService.testConnection(id));
     }
 }

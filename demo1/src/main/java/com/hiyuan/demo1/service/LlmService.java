@@ -1,6 +1,5 @@
 package com.hiyuan.demo1.service;
 
-import dev.langchain4j.model.chat.ChatLanguageModel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -13,7 +12,7 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class LlmService {
 
-    private final ChatLanguageModel chatLanguageModel;
+    private final AiProviderModelManager modelManager;
 
     /**
      * 简单的文本生成
@@ -22,7 +21,7 @@ public class LlmService {
         log.debug("简单生成，Prompt 长度: {} 字符", prompt.length());
         
         try {
-            return chatLanguageModel.generate(prompt);
+            return modelManager.getChatModel().generate(prompt);
         } catch (Exception e) {
             log.error("LLM 调用失败: {}", e.getMessage(), e);
             throw new RuntimeException("LLM 服务调用失败", e);
@@ -39,7 +38,7 @@ public class LlmService {
         try {
             String prompt = buildRagPrompt(question, context);
             long startTime = System.currentTimeMillis();
-            String answer = chatLanguageModel.generate(prompt);
+            String answer = modelManager.getChatModel().generate(prompt);
             long duration = System.currentTimeMillis() - startTime;
             
             log.info("答案生成完成，耗时: {}ms", duration);
@@ -79,7 +78,7 @@ public class LlmService {
      */
     public boolean isAvailable() {
         try {
-            String response = chatLanguageModel.generate("Hello");
+            String response = modelManager.getChatModel().generate("Hello");
             return response != null && !response.isEmpty();
         } catch (Exception e) {
             log.warn("LLM 服务不可用: {}", e.getMessage());
@@ -91,6 +90,6 @@ public class LlmService {
      * 获取当前使用的模型信息
      */
     public String getModelInfo() {
-        return "LangChain4j ChatLanguageModel (SiliconFlow 硅基流动)";
+        return modelManager.describeCurrentModel();
     }
 }

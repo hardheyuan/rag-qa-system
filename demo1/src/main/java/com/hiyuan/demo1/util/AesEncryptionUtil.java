@@ -67,23 +67,27 @@ public class AesEncryptionUtil {
     }
     
     public String decrypt(String encryptedText) {
+        if (encryptedText == null || encryptedText.isEmpty()) {
+            return encryptedText;
+        }
         try {
             byte[] decoded = Base64.getDecoder().decode(encryptedText);
-            
-            // 提取IV
+            if (decoded.length <= GCM_IV_LENGTH) {
+                log.warn("Decoded text shorter than IV, returning original text");
+                return encryptedText;
+            }
             byte[] iv = new byte[GCM_IV_LENGTH];
             System.arraycopy(decoded, 0, iv, 0, iv.length);
-            
-            // 提取密文
             byte[] cipherText = new byte[decoded.length - GCM_IV_LENGTH];
             System.arraycopy(decoded, GCM_IV_LENGTH, cipherText, 0, cipherText.length);
-            
             Cipher cipher = Cipher.getInstance(ALGORITHM);
             GCMParameterSpec parameterSpec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
             cipher.init(Cipher.DECRYPT_MODE, secretKey, parameterSpec);
-            
             byte[] decrypted = cipher.doFinal(cipherText);
             return new String(decrypted, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException iae) {
+            log.warn("Input text is not valid Base64, returning original text");
+            return encryptedText;
         } catch (Exception e) {
             log.error("Failed to decrypt text", e);
             throw new RuntimeException("Decryption failed", e);

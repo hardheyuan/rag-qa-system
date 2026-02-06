@@ -47,7 +47,15 @@
         </div>
 
         <!-- Messages -->
-        <MessageBubble v-for="msg in messages" :key="msg.id" :type="msg.type" :content="msg.content" :citations="msg.citations" :timestamp="msg.timestamp" />
+        <MessageBubble
+          v-for="msg in messages"
+          :key="msg.id"
+          :type="msg.type"
+          :content="msg.content"
+          :citations="msg.citations"
+          :timestamp="msg.timestamp"
+          :is-streaming="Boolean(msg.streaming)"
+        />
 
         <!-- Loading State -->
         <div v-if="isLoading" class="flex gap-4 md:gap-6">

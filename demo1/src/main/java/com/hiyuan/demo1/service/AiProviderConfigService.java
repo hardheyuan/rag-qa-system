@@ -15,6 +15,12 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.net.URI;
+import java.time.Duration;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -22,6 +28,7 @@ public class AiProviderConfigService {
     
     private final AiProviderConfigRepository configRepository;
     private final AesEncryptionUtil encryptionUtil;
+    private final AiProviderModelManager modelManager;
     
     // 提供商预设信息
     private static final List<AiProviderInfo> PROVIDER_PRESETS = Arrays.asList(
@@ -59,6 +66,12 @@ public class AiProviderConfigService {
     public List<AiProviderInfo> getSupportedProviders() {
         return PROVIDER_PRESETS;
     }
+
+    public List<String> getSupportedProviderTypes() {
+        return PROVIDER_PRESETS.stream()
+            .map(AiProviderInfo::getCode)
+            .collect(Collectors.toList());
+    }
     
     public List<AiProviderConfigResponse> getAllConfigs() {
         return configRepository.findAll().stream()
@@ -66,9 +79,10 @@ public class AiProviderConfigService {
             .collect(Collectors.toList());
     }
     
-    public Optional<AiProviderConfigResponse> getConfigById(Long id) {
+    public AiProviderConfigResponse getConfigById(Long id) {
         return configRepository.findById(id)
-            .map(this::toResponse);
+            .map(this::toResponse)
+            .orElseThrow(() -> new RuntimeException("配置不存在: " + id));
     }
     
     public Optional<AiProviderConfig> getActiveConfig() {
@@ -116,6 +130,9 @@ public class AiProviderConfigService {
         
         AiProviderConfig updated = configRepository.save(config);
         log.info("Updated AI provider config: id={}", updated.getId());
+        if (Boolean.TRUE.equals(updated.getIsActive())) {
+            modelManager.refresh();
+        }
         
         return toResponse(updated);
     }
@@ -134,21 +151,23 @@ public class AiProviderConfigService {
     }
     
     @Transactional
-    public void activateConfig(Long id) {
+    public AiProviderConfigResponse activateConfig(Long id) {
         AiProviderConfig config = configRepository.findById(id)
             .orElseThrow(() -> new RuntimeException("配置不存在: " + id));
-        
+
         // 先禁用所有配置
         configRepository.findAll().forEach(c -> {
             c.setIsActive(false);
             configRepository.save(c);
         });
-        
+
         // 激活指定配置
         config.setIsActive(true);
         configRepository.save(config);
-        
+
         log.info("Activated AI provider config: id={}, provider={}", id, config.getProviderCode());
+        modelManager.refresh();
+        return toResponse(config);
     }
     
     private AiProviderConfigResponse toResponse(AiProviderConfig config) {
@@ -185,5 +204,62 @@ public class AiProviderConfigService {
             .filter(p -> p.getCode().equals(providerCode))
             .findFirst()
             .orElseThrow(() -> new RuntimeException("不支持的提供商: " + providerCode));
+    }
+
+    public AiProviderStatusResponse testConnection(Long id) {
+        AiProviderConfig config = configRepository.findById(id)
+            .orElseThrow(() -> new RuntimeException("配置不存在: " + id));
+
+        long startTime = System.currentTimeMillis();
+
+        try {
+            // 解密API密钥
+            String apiKey = encryptionUtil.decrypt(config.getApiKey());
+
+            // 创建HTTP客户端
+            HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .build();
+
+            // 构建简单的测试请求（获取模型列表或发送简单请求）
+            HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(config.getBaseUrl() + "/models"))
+                .header("Authorization", "Bearer " + apiKey)
+                .timeout(Duration.ofSeconds(10))
+                .GET()
+                .build();
+
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+            long responseTime = System.currentTimeMillis() - startTime;
+
+            if (response.statusCode() == 200) {
+                return AiProviderStatusResponse.builder()
+                    .success(true)
+                    .message("连接成功")
+                    .responseTimeMs(responseTime)
+                    .providerCode(config.getProviderCode())
+                    .providerName(config.getProviderName())
+                    .build();
+            } else {
+                return AiProviderStatusResponse.builder()
+                    .success(false)
+                    .message("连接失败: HTTP " + response.statusCode())
+                    .responseTimeMs(responseTime)
+                    .providerCode(config.getProviderCode())
+                    .providerName(config.getProviderName())
+                    .build();
+            }
+
+        } catch (Exception e) {
+            long responseTime = System.currentTimeMillis() - startTime;
+            return AiProviderStatusResponse.builder()
+                .success(false)
+                .message("连接异常: " + e.getMessage())
+                .responseTimeMs(responseTime)
+                .providerCode(config.getProviderCode())
+                .providerName(config.getProviderName())
+                .build();
+        }
     }
 }

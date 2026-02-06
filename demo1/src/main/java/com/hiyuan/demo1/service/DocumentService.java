@@ -46,7 +46,7 @@ public class DocumentService {
      * 上传并处理文档
      */
     @Transactional
-    public Document uploadDocument(MultipartFile file, String userId) throws IOException {
+    public Document uploadDocument(MultipartFile file, UUID userId) throws IOException {
         log.info("开始上传文档: filename={}, userId={}", file.getOriginalFilename(), userId);
 
         // 1. 验证文件
@@ -60,8 +60,9 @@ public class DocumentService {
                 "不支持的文件格式，请上传 PDF、DOCX 或 PPTX 文件");
         }
 
-        // 2. 获取或创建用户
-        User user = getOrCreateUser(userId);
+        // 2. 获取当前登录用户
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AuthorizationException("用户不存在或登录状态无效"));
 
         // 3. 检查是否已存在同名文件
         if (documentRepository.findByUserIdAndFilename(user.getId(), filename).isPresent()) {
@@ -120,21 +121,6 @@ public class DocumentService {
     }
 
     /**
-     * 获取或创建用户
-     */
-    private User getOrCreateUser(String userId) {
-        return userRepository.findByUsername(userId)
-                .orElseGet(() -> {
-                    log.info("创建新用户: {}", userId);
-                    User newUser = User.builder()
-                            .username(userId)
-                            .isActive(true)
-                            .build();
-                    return userRepository.save(newUser);
-                });
-    }
-
-    /**
      * 获取文件扩展名
      */
     private String getFileExtension(String filename) {
@@ -167,9 +153,9 @@ public class DocumentService {
     /**
      * 获取文档检索统计（包含检索次数和覆盖率）
      */
-    public List<java.util.Map<String, Object>> getDocumentStats(String userId) {
+    public List<java.util.Map<String, Object>> getDocumentStats(UUID userId) {
         // 1. 获取用户文档
-        User user = userRepository.findByUsername(userId).orElse(null);
+        User user = userRepository.findById(userId).orElse(null);
         if (user == null) {
             return List.of();
         }

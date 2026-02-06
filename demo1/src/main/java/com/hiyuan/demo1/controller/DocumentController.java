@@ -4,7 +4,6 @@ import com.hiyuan.demo1.dto.response.ApiResponse;
 import com.hiyuan.demo1.entity.Document;
 import com.hiyuan.demo1.enums.DocumentStatus;
 import com.hiyuan.demo1.repository.DocumentRepository;
-import com.hiyuan.demo1.repository.UserRepository;
 import com.hiyuan.demo1.security.UserPrincipal;
 import com.hiyuan.demo1.service.DocumentService;
 import lombok.RequiredArgsConstructor;
@@ -31,7 +30,6 @@ public class DocumentController {
 
     private final DocumentRepository documentRepository;
     private final DocumentService documentService;
-    private final UserRepository userRepository;
 
     /**
      * 上传文档
@@ -40,8 +38,12 @@ public class DocumentController {
     public ApiResponse<Document> uploadDocument(
             @RequestParam("file") MultipartFile file,
             @AuthenticationPrincipal UserPrincipal userPrincipal) {
-        
-        String userId = userPrincipal != null ? userPrincipal.getId().toString() : "demo-user-123";
+
+        if (userPrincipal == null) {
+            return ApiResponse.unauthorized("未登录或登录状态失效");
+        }
+
+        UUID userId = userPrincipal.getId();
         log.info("上传文档: filename={}, size={}, userId={}", 
                 file.getOriginalFilename(), file.getSize(), userId);
         
@@ -65,20 +67,18 @@ public class DocumentController {
             @AuthenticationPrincipal UserPrincipal userPrincipal,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        
-        String userId = userPrincipal != null ? userPrincipal.getId().toString() : "demo-user-123";
+
+        if (userPrincipal == null) {
+            return ApiResponse.unauthorized("未登录或登录状态失效");
+        }
+
+        UUID userId = userPrincipal.getId();
         log.info("获取文档列表: userId={}, page={}, size={}", userId, page, size);
-        
+
         try {
-            // 根据用户名查找用户
-            var user = userRepository.findByUsername(userId);
-            if (user.isEmpty()) {
-                return ApiResponse.success(List.of());
-            }
-            
             // 查询用户的文档，按上传时间倒序
             var pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "uploadedAt"));
-            Page<Document> documents = documentRepository.findByUserId(user.get().getId(), pageable);
+            Page<Document> documents = documentRepository.findByUserId(userId, pageable);
             return ApiResponse.success(documents.getContent());
         } catch (Exception e) {
             log.error("获取文档列表失败: {}", e.getMessage(), e);
@@ -157,7 +157,12 @@ public class DocumentController {
     @GetMapping("/stats")
     public ApiResponse<List<java.util.Map<String, Object>>> getDocumentStats(
             @AuthenticationPrincipal UserPrincipal userPrincipal) {
-        String userId = userPrincipal != null ? userPrincipal.getId().toString() : "demo-user-123";
+
+        if (userPrincipal == null) {
+            return ApiResponse.unauthorized("未登录或登录状态失效");
+        }
+
+        UUID userId = userPrincipal.getId();
         log.info("获取文档检索统计: userId={}", userId);
         
         try {

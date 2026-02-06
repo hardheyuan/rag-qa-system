@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import api from '@/api/interceptor'
+import { qaApi } from '@/api/auth'
+import { isJwtExpiringSoon } from '@/utils/jwt'
 import { useUserStore } from './user'
 
 export const useChatStore = defineStore('chat', () => {
@@ -13,6 +15,8 @@ export const useChatStore = defineStore('chat', () => {
   const conversations = ref([])
   
   const MAX_CONVERSATIONS = 20
+  const TOKEN_REFRESH_BUFFER_MS = 60 * 1000
+  const MAX_SSE_RETRY = 1
 
   // 根据当前登录用户生成独立的本地存储 key，避免不同账号共享对话
   function getStorageKey() {
@@ -165,13 +169,14 @@ export const useChatStore = defineStore('chat', () => {
 
   function addMessage(type, content, citations = []) {
     const message = {
-      id: Date.now(),
+      id: generateId(),
       type,
       content,
       citations,
       timestamp: new Date().toISOString()
     }
     messages.value.push(message)
+    const reactiveMessage = messages.value[messages.value.length - 1]
     
     // 更新当前对话
     if (currentChatId.value) {
@@ -188,43 +193,176 @@ export const useChatStore = defineStore('chat', () => {
     }
     
     saveToStorage()
+    return reactiveMessage
+  }
+
+  function buildQaPayload(question, previousUserMessage, previousAssistantMessage) {
+    const payload = { question }
+    if (previousUserMessage) {
+      payload.previousQuestion = previousUserMessage.content
+    }
+    if (previousAssistantMessage) {
+      payload.previousAnswer = previousAssistantMessage.content
+    }
+    return payload
+  }
+
+  async function ensureSseAccessToken(userStore, forceRefresh = false) {
+    const token = userStore.accessToken
+    if (forceRefresh || !token || isJwtExpiringSoon(token, TOKEN_REFRESH_BUFFER_MS)) {
+      return userStore.refreshAccessToken()
+    }
+    return token
+  }
+
+  async function streamWithEventSource(payload, token, assistantMessage, updateStorage) {
+    return new Promise((resolve, reject) => {
+      const params = new URLSearchParams()
+      params.append('question', payload.question)
+      if (payload.previousQuestion) {
+        params.append('previousQuestion', payload.previousQuestion)
+      }
+      if (payload.previousAnswer) {
+        params.append('previousAnswer', payload.previousAnswer)
+      }
+      if (token) {
+        params.append('access_token', token)
+      }
+
+      const baseURL = api.defaults.baseURL?.replace(/\/$/, '') || ''
+      const streamUrl = `${baseURL}/qa/stream?${params.toString()}`
+      const eventSource = new EventSource(streamUrl)
+      let settled = false
+
+      const finish = (handler, value) => {
+        if (settled) return
+        settled = true
+        eventSource.close()
+        handler(value)
+      }
+
+      eventSource.addEventListener('meta', (event) => {
+        try {
+          const payload = JSON.parse(event.data)
+          assistantMessage.citations = payload.citations || []
+          updateStorage()
+        } catch (err) {
+          console.error('解析 meta 事件失败', err)
+        }
+      })
+
+      eventSource.addEventListener('delta', (event) => {
+        try {
+          const payload = JSON.parse(event.data)
+          if (payload.content) {
+            assistantMessage.content += payload.content
+            updateStorage()
+          }
+        } catch (err) {
+          console.error('解析 delta 事件失败', err)
+        }
+      })
+
+      eventSource.addEventListener('done', (event) => {
+        try {
+          const payload = JSON.parse(event.data)
+          if (payload.answer) {
+            assistantMessage.content = payload.answer
+          }
+          if (Array.isArray(payload.citations)) {
+            assistantMessage.citations = payload.citations
+          }
+          assistantMessage.historyId = payload.historyId
+          updateStorage()
+          finish(resolve)
+        } catch (err) {
+          finish(reject, err)
+        }
+      })
+
+      eventSource.addEventListener('error', (event) => {
+        console.error('SSE 发生错误', event)
+        finish(reject, new Error('SSE_STREAM_ERROR'))
+      })
+    })
+  }
+
+  async function askByHttpFallback(payload, assistantMessage) {
+    const response = await qaApi.askQuestion(payload)
+    const result = response?.data || {}
+    if (typeof result.code === 'number' && result.code !== 200) {
+      throw new Error(result.message || '问答请求失败')
+    }
+
+    const data = result.data || result
+    assistantMessage.content = data.answer || '抱歉，未获取到回答。'
+    assistantMessage.citations = data.citations || []
+    assistantMessage.historyId = data.historyId
   }
 
   async function sendMessage(question) {
-    if (!question.trim()) return
+    const trimmedQuestion = question.trim()
+    if (!trimmedQuestion) return
 
     // 如果没有活跃对话，创建一个新的
     if (!currentChatId.value) {
       createNewConversation()
     }
 
-    addMessage('user', question)
+    const historySnapshot = [...messages.value]
+    const previousAssistantMessage = [...historySnapshot].reverse().find(m => m.type === 'assistant' && !m.streaming)
+    const previousUserMessage = [...historySnapshot].reverse().find(m => m.type === 'user')
+
+    addMessage('user', trimmedQuestion)
     isLoading.value = true
 
+    const assistantMessage = addMessage('assistant', '', [])
+    assistantMessage.streaming = true
+    const updateStorage = () => {
+      saveToStorage()
+    }
+
     try {
-      // 使用配置了JWT拦截器的 api 实例
-      const response = await api.post('/qa/ask', {
-        question
-      })
+      const userStore = useUserStore()
+      const payload = buildQaPayload(trimmedQuestion, previousUserMessage, previousAssistantMessage)
+      let streamSuccess = false
+      let lastError = null
 
-      const result = response.data
-      isLoading.value = false
+      for (let attempt = 0; attempt <= MAX_SSE_RETRY; attempt += 1) {
+        try {
+          const token = await ensureSseAccessToken(userStore, attempt > 0)
+          await streamWithEventSource(payload, token, assistantMessage, updateStorage)
+          streamSuccess = true
+          break
+        } catch (err) {
+          lastError = err
+          console.error(`SSE 第 ${attempt + 1} 次尝试失败`, err)
 
-      if (result.code === 200) {
-        addMessage('assistant', result.data.answer, result.data.citations || [])
-      } else {
-        addMessage('assistant', `抱歉，我遇到了一些问题：${result.message}`)
+          const shouldRetry = attempt < MAX_SSE_RETRY && !assistantMessage.content
+          if (!shouldRetry) {
+            break
+          }
+        }
+      }
+
+      if (!streamSuccess && !assistantMessage.content) {
+        await askByHttpFallback(payload, assistantMessage)
+      } else if (!streamSuccess && assistantMessage.content) {
+        assistantMessage.content += '\n\n> 流式连接中断，以上内容可能未完整生成。'
+      }
+
+      if (!streamSuccess && !assistantMessage.content && lastError) {
+        throw lastError
       }
     } catch (error) {
-      isLoading.value = false
       console.error('发送消息失败:', error)
-      
-      // 如果是401错误，会被拦截器处理
-      if (error.response?.status === 401) {
-        addMessage('assistant', '您的登录已过期，请重新登录')
-      } else {
-        addMessage('assistant', `抱歉，我遇到了一些问题：${error.message}`)
+      if (!assistantMessage.content) {
+        assistantMessage.content = '抱歉，生成失败，请稍后重试。'
       }
+    } finally {
+      assistantMessage.streaming = false
+      isLoading.value = false
+      updateStorage()
     }
   }
 

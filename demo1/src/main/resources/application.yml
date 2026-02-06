@@ -91,7 +91,7 @@ langchain4j:
 
     # 生成参数
     temperature: 0.7          # 生成温度 (0-1)，越高越随机
-    max-tokens: 2048          # 最大输出 token 数
+    max-tokens: 4096          # 最大输出 token 数
 
 # MRL (Matryoshka Representation Learning) 配置
 embedding:
@@ -137,7 +137,7 @@ aliyun:
 qa:
   top-k: 5                             # 检索相关文档数量
   temperature: 0.7                     # LLM 生成温度
-  max-tokens: 2000                     # 最大生成 token 数
+  max-tokens: 4096                     # 最大生成 token 数
   timeout-seconds: 120                 # 问答超时时间
 
 # 日志配置

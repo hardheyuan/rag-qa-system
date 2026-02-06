@@ -16,9 +16,14 @@ public class QaRequest {
     private String question;
     
     /**
-     * 用户ID（可选，字符串类型）
+     * 前一轮用户问题（可选）
      */
-    private String userId;
+    private String previousQuestion;
+
+    /**
+     * 前一轮 AI 回答（可选）
+     */
+    private String previousAnswer;
     
     /**
      * 检索相关文档数量（可选，默认5）

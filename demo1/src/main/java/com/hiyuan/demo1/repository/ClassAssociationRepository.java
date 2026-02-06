@@ -4,6 +4,8 @@ import com.hiyuan.demo1.entity.ClassAssociation;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -123,4 +125,10 @@ public interface ClassAssociationRepository extends JpaRepository<ClassAssociati
      * long studentCount = repository.countByTeacherId(teacherId);
      */
     long countByTeacherId(UUID teacherId);
+
+    /**
+     * 查询学生关联的教师 ID 列表
+     */
+    @Query("SELECT ca.teacher.id FROM ClassAssociation ca WHERE ca.student.id = :studentId")
+    List<UUID> findTeacherIdsByStudentId(@Param("studentId") UUID studentId);
 }

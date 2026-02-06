@@ -19,7 +19,7 @@
           : ''
       ]">
         <div class="text-[#111418] dark:text-gray-100 text-base leading-relaxed tracking-wide">
-          <p v-html="formattedContent" class="mb-4"></p>
+          <div v-html="renderedContent" class="chat-markdown"></div>
           <p v-if="isStreaming" class="streaming-text"></p>
         </div>
       </div>
@@ -68,6 +68,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import MarkdownIt from 'markdown-it'
 
 const props = defineProps({
   type: { type: String, required: true },
@@ -77,10 +78,17 @@ const props = defineProps({
   isStreaming: { type: Boolean, default: false }
 })
 
+const markdown = new MarkdownIt({
+  html: false,
+  linkify: true,
+  breaks: true,
+  typographer: false
+})
+
 const isUser = computed(() => props.type === 'user')
 
-const formattedContent = computed(() => {
-  return props.content.replace(/\n/g, '<br>')
+const renderedContent = computed(() => {
+  return markdown.render(props.content || '')
 })
 
 const formattedTime = computed(() => {
@@ -102,3 +110,60 @@ function getSourceColor(type) {
   return colors[type?.toUpperCase()] || 'bg-gray-50 dark:bg-gray-700 text-gray-500'
 }
 </script>
+
+<style scoped>
+.chat-markdown:deep(p) {
+  margin: 0 0 0.75rem;
+}
+
+.chat-markdown:deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.chat-markdown:deep(ul),
+.chat-markdown:deep(ol) {
+  margin: 0.5rem 0 0.75rem;
+  padding-left: 1.25rem;
+}
+
+.chat-markdown:deep(code) {
+  background: rgba(148, 163, 184, 0.18);
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.35rem;
+  font-size: 0.92em;
+}
+
+.chat-markdown:deep(pre) {
+  background: rgba(15, 23, 42, 0.06);
+  padding: 0.75rem;
+  border-radius: 0.65rem;
+  overflow-x: auto;
+  margin: 0.5rem 0 0.75rem;
+}
+
+.dark .chat-markdown:deep(pre) {
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.chat-markdown:deep(pre code) {
+  background: transparent;
+  padding: 0;
+}
+
+.chat-markdown:deep(blockquote) {
+  border-left: 3px solid rgba(66, 139, 240, 0.45);
+  padding-left: 0.75rem;
+  margin: 0.5rem 0 0.75rem;
+  color: rgba(71, 85, 105, 1);
+}
+
+.dark .chat-markdown:deep(blockquote) {
+  color: rgba(148, 163, 184, 1);
+}
+
+.chat-markdown:deep(a) {
+  color: rgba(37, 99, 235, 1);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+</style>

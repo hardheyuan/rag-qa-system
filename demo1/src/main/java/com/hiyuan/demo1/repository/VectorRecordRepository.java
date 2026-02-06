@@ -78,6 +78,22 @@ public interface VectorRecordRepository extends JpaRepository<VectorRecord, UUID
             @Param("queryVector") String queryVector,
             @Param("userId") UUID userId,
             @Param("limit") int limit);
+
+    /**
+     * 按文档拥有者列表进行向量相似度查询
+     */
+    @Query(value = """
+            SELECT vr.id FROM t_vector_record vr
+            JOIN t_document d ON vr.document_id = d.id
+            WHERE d.user_id IN (:ownerIds)
+              AND d.status = 'SUCCESS'
+            ORDER BY vr.embedding <-> CAST(:queryVector AS vector)
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<UUID> findNearestVectorIdsByOwnerIds(
+            @Param("queryVector") String queryVector,
+            @Param("ownerIds") List<UUID> ownerIds,
+            @Param("limit") int limit);
     
     /**
      * 根据ID列表查询向量记录（带关联对象，保持顺序）

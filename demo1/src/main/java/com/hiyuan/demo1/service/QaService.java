@@ -8,6 +8,8 @@ import com.hiyuan.demo1.entity.QaHistory;
 import com.hiyuan.demo1.entity.User;
 import com.hiyuan.demo1.entity.VectorRecord;
 import com.hiyuan.demo1.exception.BusinessException;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hiyuan.demo1.repository.QaHistoryRepository;
 import com.hiyuan.demo1.repository.UserRepository;
 import com.hiyuan.demo1.repository.VectorRecordRepository;
@@ -16,15 +18,18 @@ import com.hiyuan.demo1.util.VectorUtils;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -42,6 +47,9 @@ public class QaService {
     private final VectorRecordRepository vectorRecordRepository;
     private final UserRepository userRepository;
     private final QaHistoryRepository qaHistoryRepository;
+    private final StreamingChatService streamingChatService;
+    private final ObjectMapper objectMapper;
+    private final QaDocumentAccessScopeResolver accessScopeResolver;
     
     // 相似度阈值：低于此值的文档将被过滤
     // 余弦相似度范围 [-1, 1]，通常相关文档 > 0.7，不相关 < 0.5
@@ -52,149 +60,260 @@ public class QaService {
      */
     @Transactional
     public QaResponse ask(QaRequest request) {
-        log.info("处理问答请求: {}", request.getQuestion());
-
-        long startTime = System.currentTimeMillis();
-
         try {
-            // 从 Spring Security 上下文获取当前登录用户
-            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-            UUID userId = null;
-            User user = null;
-            boolean isAdmin = false;
-            
-            if (authentication != null && authentication.getPrincipal() instanceof UserPrincipal) {
-                UserPrincipal userPrincipal = (UserPrincipal) authentication.getPrincipal();
-                userId = userPrincipal.getId();
-                user = userRepository.findById(userId).orElse(null);
-                
-                // 检查是否是管理员
-                isAdmin = userPrincipal.getAuthorities().stream()
-                    .anyMatch(auth -> auth.getAuthority().equals("ROLE_ADMIN"));
-                
-                log.info("当前用户: {} (ID: {}), 角色: {}", 
-                    userPrincipal.getUsername(), 
-                    userId,
-                    isAdmin ? "管理员" : "普通用户");
-                
-                // 管理员可以查询所有文档，普通用户只能查询自己的文档
-                if (isAdmin) {
-                    userId = null; // 设置为null表示查询所有文档
-                    log.info("管理员权限：将查询所有用户的文档");
-                }
-            } else {
-                log.warn("未找到认证用户，将查询所有文档");
-            }
-
-            int topK = request.getTopK() == null ? 5 : request.getTopK();
-            if (topK < 1) topK = 1;
-            if (topK > 20) topK = 20;
-
-            // 生成问题向量并使用 MRL 截断
-            float[] fullQuestionVector = embeddingModel.embed(request.getQuestion()).content().vector();
-            float[] truncatedVector = mrlService.truncateVector(fullQuestionVector);
-            String queryVector = VectorUtils.vectorToString(truncatedVector);
-            
-            log.debug("问题向量维度: {} -> {}", fullQuestionVector.length, truncatedVector.length);
-
-            // 第一步：使用原生SQL查询最相似的向量ID（按相似度排序）
-            List<UUID> nearestIds = vectorRecordRepository.findNearestVectorIds(queryVector, userId, topK);
-            
-            log.info("找到 {} 条相似向量ID", nearestIds.size());
-            
-            // 第二步：使用JPQL加载完整对象图（包含document和chunk）
-            List<VectorRecord> nearest;
-            if (nearestIds.isEmpty()) {
-                nearest = List.of();
-            } else {
-                nearest = vectorRecordRepository.findByIdsWithRelations(nearestIds);
-                log.info("加载完整对象后，记录数: {}", nearest.size());
-                
-                // 按照原始顺序排序（保持相似度顺序）
-                Map<UUID, VectorRecord> recordMap = nearest.stream()
-                    .collect(Collectors.toMap(VectorRecord::getId, vr -> vr));
-                nearest = nearestIds.stream()
-                    .map(recordMap::get)
-                    .filter(Objects::nonNull)
-                    .toList();
-            }
-            
-            List<QaResponse.CitationInfo> citations = new ArrayList<>(nearest.size());
-
-            for (VectorRecord vr : nearest) {
-                Document document = vr.getDocument();
-                DocumentChunk chunk = vr.getChunk();
-
-                log.debug("VectorRecord ID: {}, Document: {}, Chunk: {}",
-                    vr.getId(),
-                    document != null ? document.getFilename() : "NULL",
-                    chunk != null ? "存在" : "NULL");
-
-                String content = chunk != null ? chunk.getContent() : null;
-                if (content != null && content.length() > 500) {
-                    content = content.substring(0, 500);
-                }
-
-                Double score = null;
-                try {
-                    float[] docVector = VectorUtils.parseVectorString(vr.getEmbedding());
-                    score = VectorUtils.cosineSimilarity(truncatedVector, docVector);
-                    
-                    log.info("文档: {}, 相似度分数: {}", 
-                        document != null ? document.getFilename() : "NULL", 
-                        score != null ? String.format("%.4f", score) : "NULL");
-                    
-                    // 过滤低相似度的文档
-                    if (score != null && score < SIMILARITY_THRESHOLD) {
-                        log.info("过滤低相似度文档: {} (score: {}, threshold: {})", 
-                            document != null ? document.getFilename() : "NULL", 
-                            String.format("%.4f", score),
-                            SIMILARITY_THRESHOLD);
-                        continue;
-                    }
-                } catch (Exception e) {
-                    log.warn("计算相似度失败: {}", e.getMessage());
-                }
-
-                citations.add(QaResponse.CitationInfo.builder()
-                        .documentId(document == null ? null : document.getId().toString())
-                        .documentTitle(document == null ? null : document.getFilename())
-                        .content(content)
-                        .score(score)
-                        .build());
-            }
-            
-            log.info("过滤后剩余 {} 条相关引用", citations.size());
-
-            String prompt = buildPrompt(request.getQuestion(), citations);
-            String answer = llmService.generate(prompt);
-
-            QaHistory history = new QaHistory();
-            history.setUser(user);
-            history.setQuestion(request.getQuestion());
-            history.setAnswer(answer);
-            history.setModelVersion("SiliconFlow DeepSeek-V3");
-            history.setResponseTime((int) (System.currentTimeMillis() - startTime));
-
-            try {
-                history = qaHistoryRepository.save(history);
-            } catch (Exception e) {
-                log.warn("保存问答历史失败，但不影响问答功能: {}", e.getMessage());
-                history = null;
-            }
-
+            QaProcessingContext context = prepareContext(request);
+            String answer = llmService.generate(context.prompt());
+            QaHistory history = saveHistory(context.user(), context.question(), answer, context.startTime());
             return QaResponse.builder()
                     .answer(answer)
-                    .citations(citations)
+                    .citations(context.citations())
                     .historyId(history == null ? null : history.getId().toString())
                     .build();
-
         } catch (BusinessException e) {
-            // 业务异常直接抛出
             throw e;
         } catch (Exception e) {
             log.error("问答处理失败: {}", e.getMessage(), e);
             throw BusinessException.internalError("问答处理", e);
+        }
+    }
+
+    public Flux<ServerSentEvent<String>> streamAnswer(QaRequest request) {
+        QaProcessingContext context;
+        try {
+            context = prepareContext(request);
+        } catch (BusinessException e) {
+            return Flux.just(buildEvent("error", Map.of("message", e.getMessage())));
+        } catch (Exception e) {
+            log.error("流式问答处理失败: {}", e.getMessage(), e);
+            return Flux.just(buildEvent("error", Map.of("message", "问答处理失败: " + e.getMessage())));
+        }
+
+        Flux<ServerSentEvent<String>> metaFlux = Flux.just(
+                buildEvent("meta", Map.of("citations", context.citations()))
+        );
+
+        Flux<ServerSentEvent<String>> deltaFlux = streamingChatService.streamChatCompletion(context.prompt())
+                .map(chunk -> {
+                    context.appendAnswer(chunk);
+                    return buildEvent("delta", Map.of("content", chunk));
+                })
+                .concatWith(Mono.fromCallable(() -> {
+                    QaHistory history = saveHistory(
+                            context.user(),
+                            context.question(),
+                            context.answerBuilder().toString(),
+                            context.startTime()
+                    );
+                    return buildEvent("done", Map.of(
+                            "historyId", history == null ? null : history.getId().toString(),
+                            "answer", context.answerBuilder().toString(),
+                            "citations", context.citations()
+                    ));
+                }))
+                .onErrorResume(ex -> {
+                    log.error("流式生成失败: {}", ex.getMessage(), ex);
+                    return Flux.just(buildEvent("error", Map.of("message", "流式生成失败: " + ex.getMessage())));
+                });
+
+        return metaFlux.concatWith(deltaFlux);
+    }
+
+    private QaProcessingContext prepareContext(QaRequest request) {
+        log.info("处理问答请求: {}", request.getQuestion());
+
+        long startTime = System.currentTimeMillis();
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        QaDocumentAccessScopeResolver.AccessScope accessScope = accessScopeResolver.resolve(authentication);
+        UUID userId = accessScope.currentUserId();
+        User user = null;
+        if (authentication != null && authentication.getPrincipal() instanceof UserPrincipal userPrincipal) {
+            user = userRepository.findById(userId).orElse(null);
+            log.info("当前用户: {} (ID: {}), 范围: {}",
+                    userPrincipal.getUsername(),
+                    userId,
+                    accessScope.description());
+        } else {
+            log.warn(accessScope.description());
+        }
+
+        int topK = request.getTopK() == null ? 5 : request.getTopK();
+        if (topK < 1) topK = 1;
+        if (topK > 20) topK = 20;
+
+        float[] fullQuestionVector = embeddingModel.embed(request.getQuestion()).content().vector();
+        float[] truncatedVector = mrlService.truncateVector(fullQuestionVector);
+        String queryVector = VectorUtils.vectorToString(truncatedVector);
+
+        log.debug("问题向量维度: {} -> {}", fullQuestionVector.length, truncatedVector.length);
+
+        List<UUID> nearestIds;
+        if (accessScope.queryAllDocuments()) {
+            nearestIds = vectorRecordRepository.findNearestVectorIds(queryVector, null, topK);
+        } else if (accessScope.ownerIds().isEmpty()) {
+            nearestIds = List.of();
+        } else {
+            nearestIds = vectorRecordRepository.findNearestVectorIdsByOwnerIds(queryVector, accessScope.ownerIds(), topK);
+        }
+        log.info("找到 {} 条相似向量ID", nearestIds.size());
+
+        List<VectorRecord> nearestRecords = nearestIds.isEmpty()
+                ? List.of()
+                : reorderByIds(nearestIds, vectorRecordRepository.findByIdsWithRelations(nearestIds));
+
+        List<QaResponse.CitationInfo> citations = buildCitations(nearestRecords, truncatedVector);
+        log.info("过滤后剩余 {} 条相关引用", citations.size());
+
+        String prompt = buildPromptWithHistory(
+                request.getQuestion(),
+                citations,
+                request.getPreviousQuestion(),
+                request.getPreviousAnswer()
+        );
+
+        return new QaProcessingContext(user, request.getQuestion(), citations, prompt, startTime);
+    }
+
+    private List<VectorRecord> reorderByIds(List<UUID> nearestIds, List<VectorRecord> loadedRecords) {
+        Map<UUID, VectorRecord> recordMap = loadedRecords.stream()
+                .collect(Collectors.toMap(VectorRecord::getId, vr -> vr));
+        List<VectorRecord> ordered = new ArrayList<>();
+        for (UUID id : nearestIds) {
+            VectorRecord record = recordMap.get(id);
+            if (record != null) {
+                ordered.add(record);
+            }
+        }
+        return ordered;
+    }
+
+    private List<QaResponse.CitationInfo> buildCitations(List<VectorRecord> records, float[] truncatedVector) {
+        List<QaResponse.CitationInfo> citations = new ArrayList<>(records.size());
+        List<QaResponse.CitationInfo> candidates = new ArrayList<>(records.size());
+        for (VectorRecord vr : records) {
+            Document document = vr.getDocument();
+            DocumentChunk chunk = vr.getChunk();
+
+            log.debug("VectorRecord ID: {}, Document: {}, Chunk: {}",
+                    vr.getId(),
+                    document != null ? document.getFilename() : "NULL",
+                    chunk != null ? "存在" : "NULL");
+
+            String content = chunk != null ? chunk.getContent() : null;
+            if (content != null && content.length() > 2000) {
+                content = content.substring(0, 2000);
+            }
+
+            Double score = null;
+            try {
+                float[] docVector = VectorUtils.parseVectorString(vr.getEmbedding());
+                score = VectorUtils.cosineSimilarity(truncatedVector, docVector);
+
+                log.info("文档: {}, 相似度分数: {}",
+                        document != null ? document.getFilename() : "NULL",
+                        score != null ? String.format("%.4f", score) : "NULL");
+
+            } catch (Exception e) {
+                log.warn("计算相似度失败: {}", e.getMessage());
+            }
+
+            QaResponse.CitationInfo citation = QaResponse.CitationInfo.builder()
+                    .documentId(document == null ? null : document.getId().toString())
+                    .documentTitle(document == null ? null : document.getFilename())
+                    .content(content)
+                    .score(score)
+                    .build();
+
+            candidates.add(citation);
+            if (score == null || score >= SIMILARITY_THRESHOLD) {
+                citations.add(citation);
+            } else {
+                log.info("过滤低相似度文档: {} (score: {}, threshold: {})",
+                        document != null ? document.getFilename() : "NULL",
+                        String.format("%.4f", score),
+                        SIMILARITY_THRESHOLD);
+            }
+        }
+
+        if (citations.isEmpty() && !candidates.isEmpty()) {
+            int fallbackSize = Math.min(3, candidates.size());
+            log.warn("相似度过滤后无结果，降级返回前 {} 条候选引用", fallbackSize);
+            return new ArrayList<>(candidates.subList(0, fallbackSize));
+        }
+        return citations;
+    }
+
+    private QaHistory saveHistory(User user, String question, String answer, long startTime) {
+        if (!StringUtils.hasText(answer)) {
+            return null;
+        }
+        QaHistory history = new QaHistory();
+        history.setUser(user);
+        history.setQuestion(question);
+        history.setAnswer(answer);
+        history.setModelVersion(llmService.getModelInfo());
+        history.setResponseTime((int) (System.currentTimeMillis() - startTime));
+
+        try {
+            return qaHistoryRepository.save(history);
+        } catch (Exception e) {
+            log.warn("保存问答历史失败，但不影响问答功能: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private ServerSentEvent<String> buildEvent(String eventName, Object payload) {
+        try {
+            return ServerSentEvent.<String>builder()
+                    .event(eventName)
+                    .data(objectMapper.writeValueAsString(payload))
+                    .build();
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("序列化流式事件失败", e);
+        }
+    }
+
+    private static class QaProcessingContext {
+        private final User user;
+        private final String question;
+        private final List<QaResponse.CitationInfo> citations;
+        private final String prompt;
+        private final long startTime;
+        private final StringBuilder answerBuilder = new StringBuilder();
+
+        QaProcessingContext(User user, String question, List<QaResponse.CitationInfo> citations, String prompt, long startTime) {
+            this.user = user;
+            this.question = question;
+            this.citations = List.copyOf(citations);
+            this.prompt = prompt;
+            this.startTime = startTime;
+        }
+
+        public User user() {
+            return user;
+        }
+
+        public String question() {
+            return question;
+        }
+
+        public List<QaResponse.CitationInfo> citations() {
+            return citations;
+        }
+
+        public String prompt() {
+            return prompt;
+        }
+
+        public long startTime() {
+            return startTime;
+        }
+
+        public void appendAnswer(String chunk) {
+            this.answerBuilder.append(chunk);
+        }
+
+        public StringBuilder answerBuilder() {
+            return answerBuilder;
         }
     }
 
@@ -203,24 +322,55 @@ public class QaService {
      */
     private String buildPrompt(String question, List<QaResponse.CitationInfo> citations) {
         StringBuilder prompt = new StringBuilder();
-        
-        // 系统指令：要求简洁回答
-        prompt.append("你是一个基于文档的教育者。回答要求：\n");
-        prompt.append("1. 直接回答问题，不要分析过程\n");
-        prompt.append("2. 以txt格式回答，格式要清晰美观\n");
-        prompt.append("3. 如果不知道就说不知道，不要编造\n");
-        prompt.append("4. 你现在是基于文档的教育者，请你回答时候通俗易懂，深入浅出\n\n");
-        
+
+        prompt.append("你是一位经验丰富的教育专家，擅长讲解教材和学习指南。\n");
+        prompt.append("请帮助学生深入理解问题，而不仅仅是给出简短答案。\n\n");
+
+        prompt.append("【回答要求】\n");
+        prompt.append("- 目标长度：500-1500字，详细但不啰嗦\n");
+        prompt.append("- 使用Markdown格式，关键概念用**粗体**\n");
+        prompt.append("- 如果资料不足，说明依据有限\n\n");
+
+        prompt.append("【答案结构（按顺序）】\n");
+        prompt.append("1. **直接回答**（50-100字）：开门见山给出核心答案\n");
+        prompt.append("2. **详细解释**（200-500字）：分点说明，使用类比帮助理解\n");
+        prompt.append("3. **实际应用**（100-200字）：举2个贴近生活或课程的案例\n");
+        prompt.append("4. **关键要点总结**（50-100字）：用✓列出3-5条重要结论\n\n");
+
         if (citations.isEmpty()) {
-            prompt.append("问题：").append(question);
+            prompt.append("【参考资料】\n无可用资料，请基于常识回答，但避免编造。\n\n");
         } else {
-            prompt.append("参考资料：\n");
+            prompt.append("【参考资料】\n");
             for (int i = 0; i < citations.size(); i++) {
-                prompt.append(String.format("[%d] %s\n", i + 1, citations.get(i).getContent()));
+                prompt.append(String.format("[参考%d] %s\n", i + 1, citations.get(i).getContent()));
             }
-            prompt.append("\n问题：").append(question);
+            prompt.append("\n");
         }
-        
+
+        prompt.append("【问题】").append(question).append("\n\n");
+        prompt.append("请严格按照上述结构回答：\n");
+
+        return prompt.toString();
+    }
+
+    private String buildPromptWithHistory(String question,
+                                          List<QaResponse.CitationInfo> citations,
+                                          String previousQuestion,
+                                          String previousAnswer) {
+        StringBuilder prompt = new StringBuilder();
+
+        if (StringUtils.hasText(previousQuestion) || StringUtils.hasText(previousAnswer)) {
+            prompt.append("【历史对话】\n");
+            if (StringUtils.hasText(previousQuestion)) {
+                prompt.append("学生上一问：").append(previousQuestion).append("\n");
+            }
+            if (StringUtils.hasText(previousAnswer)) {
+                prompt.append("你的上一答：").append(previousAnswer).append("\n");
+            }
+            prompt.append("请参考以上上下文，保持回答连贯。\n\n");
+        }
+
+        prompt.append(buildPrompt(question, citations));
         return prompt.toString();
     }
 }
