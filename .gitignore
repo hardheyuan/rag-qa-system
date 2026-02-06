@@ -109,3 +109,12 @@ D:desktopmyProject*/
 
 # Documentation with sensitive information
 docs/plans/
+
+# =============================================================================
+# AI Coding Assistants / Editors
+# =============================================================================
+.cursor/
+.kiro/
+.claude/
+.opencode/
+.continue/
