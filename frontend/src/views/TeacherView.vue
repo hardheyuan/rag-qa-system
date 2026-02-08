@@ -11,12 +11,12 @@
         <div class="max-w-7xl mx-auto flex flex-col gap-6">
           
           <!-- Metrics Grid -->
-          <DashboardMetrics @open-notification="handleOpenNotification" />
+          <DashboardMetrics :pending-reviews="pendingFeedbackCount" @open-notification="handleOpenNotification" />
           
           <!-- Charts & Feedback Grid -->
           <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <TrendsChart class="lg:col-span-2" />
-            <FeedbackList class="lg:col-span-1" />
+            <FeedbackList id="teacher-feedback-panel" class="lg:col-span-1" @pending-count-change="handlePendingFeedbackCountChange" />
           </div>
           
           <!-- Bottom Grid -->
@@ -59,9 +59,14 @@ import SendNotificationModal from '../components/teacher/SendNotificationModal.v
 
 // 控制发送通知弹窗显示
 const showNotificationModal = ref(false)
+const pendingFeedbackCount = ref(0)
 
 function handleOpenNotification() {
   showNotificationModal.value = true
+}
+
+function handlePendingFeedbackCountChange(count) {
+  pendingFeedbackCount.value = count
 }
 
 function handleSendNotification(notificationData) {

@@ -42,9 +42,6 @@ public class Demo1Application {
      * @param args 命令行参数（通常不需要）
      */
     public static void main(String[] args) {
-        // 强制覆盖环境变量，避免数据库用户名被系统账户覆盖
-        System.setProperty("spring.datasource.username", "postgres");
-
         // 启动Spring Boot应用
         // 这行代码会：
         // 1. 创建Spring应用上下文

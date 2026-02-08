@@ -10,6 +10,8 @@ import com.hiyuan.demo1.exception.VectorOperationException;
 import com.hiyuan.demo1.repository.DocumentChunkRepository;
 import com.hiyuan.demo1.repository.DocumentRepository;
 import com.hiyuan.demo1.util.VectorUtils;
+import dev.langchain4j.data.embedding.Embedding;
+import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -60,12 +62,16 @@ public class DocumentProcessorService {
     @Value("${document.chunk-overlap:100}")
     private int chunkOverlap;
 
+    @Value("${embedding.batch-size:16}")
+    private int embeddingBatchSize;
+
     /**
      * 异步处理文档（解析、分块、向量化）
      */
     @Async("taskExecutor")
     public void processDocumentAsync(UUID documentId) {
         log.info("开始异步处理文档: id={}", documentId);
+        long startTime = System.currentTimeMillis();
 
         Document document = documentRepository.findById(documentId)
             .orElseThrow(() -> DocumentNotFoundException.forId(documentId));
@@ -96,6 +102,10 @@ public class DocumentProcessorService {
             documentRepository.save(document);
 
             log.info("文档处理成功: id={}, chunks={}", documentId, chunks.size());
+            log.info("[METRIC][DOC_PROCESS] documentId={}, status=SUCCESS, chunkCount={}, durationMs={}",
+                    documentId,
+                    chunks.size(),
+                    System.currentTimeMillis() - startTime);
 
         } catch (Exception e) {
             log.error("文档处理失败: id={}, error={}", documentId, e.getMessage(), e);
@@ -103,6 +113,9 @@ public class DocumentProcessorService {
             document.setErrorMessage(e.getMessage());
             document.setProcessedAt(LocalDateTime.now());
             documentRepository.save(document);
+            log.info("[METRIC][DOC_PROCESS] documentId={}, status=FAILED, durationMs={}",
+                    documentId,
+                    System.currentTimeMillis() - startTime);
         }
     }
 
@@ -392,11 +405,12 @@ public class DocumentProcessorService {
 
         int successCount = 0;
         int failCount = 0;
-        
+        List<ChunkVectorTask> tasks = new ArrayList<>();
+
         for (int i = 0; i < chunks.size(); i++) {
             // 清理分块内容，移除非法字符
             String chunkContent = deepCleanText(chunks.get(i));
-            
+
             // 如果清理后内容为空，跳过
             if (chunkContent == null || chunkContent.isEmpty()) {
                 log.warn("分块 {} 清理后内容为空，跳过", i);
@@ -412,59 +426,101 @@ public class DocumentProcessorService {
                     .build();
             chunk = chunkRepository.save(chunk);
 
-            try {
-                // 检查分块内容
-                if (chunkContent == null || chunkContent.trim().isEmpty()) {
-                    log.warn("分块 {} 内容为空，跳过", i);
-                    failCount++;
-                    continue;
-                }
-                
-                log.debug("分块 {} 开始向量化，长度: {} 字符", i, chunkContent.length());
-                
-                // 添加延迟避免 API 限流（每次请求间隔 1 秒）
-                if (i > 0) {
-                    Thread.sleep(1000);
-                }
-                
-                float[] fullVector = embeddingModel.embed(chunkContent).content().vector();
-                
-                // 使用 MRL 截断向量到目标维度
-                float[] truncatedVector = mrlService.truncateVector(fullVector);
-                String vectorStr = VectorUtils.vectorToString(truncatedVector);
-
-                // 使用单独的事务服务插入向量记录
-                UUID vectorId = UUID.randomUUID();
-                vectorStorageService.insertVectorRecord(
-                        vectorId,
-                        chunk.getId(),
-                        document.getId(),
-                        vectorStr,
-                        truncatedVector.length,
-                        "Qwen/Qwen3-Embedding-0.6B"
-                );
-
-                successCount++;
-                log.info("分块 {} 向量化完成 ({}维 -> {}维)", i, fullVector.length, truncatedVector.length);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                log.error("处理被中断");
-                break;
-            } catch (Exception e) {
-                failCount++;
-                log.error("分块 {} 向量化失败，内容长度: {}, 错误: {}", i, chunkContent.length(), e.getMessage(), e);
-                // 继续处理下一个分块，不中断整个流程
-            }
+            tasks.add(new ChunkVectorTask(i, chunkContent, chunk));
         }
-        
+
+        int safeBatchSize = Math.max(1, embeddingBatchSize);
+        for (int start = 0; start < tasks.size(); start += safeBatchSize) {
+            int end = Math.min(start + safeBatchSize, tasks.size());
+            List<ChunkVectorTask> batch = tasks.subList(start, end);
+
+            int batchSuccess = processBatch(document, batch);
+            successCount += batchSuccess;
+            failCount += (batch.size() - batchSuccess);
+        }
+
         log.info("分块向量化完成: 成功={}, 失败={}", successCount, failCount);
-        
+
         // 如果所有分块都失败了，抛出异常
         if (successCount == 0 && chunks.size() > 0) {
             throw VectorOperationException.embeddingError(
                     document.getId(),
-                "所有分块向量化都失败了，请检查嵌入服务配置");
+                    "所有分块向量化都失败了，请检查嵌入服务配置");
         }
+    }
+
+    private int processBatch(Document document, List<ChunkVectorTask> batch) {
+        List<TextSegment> segments = batch.stream()
+                .map(task -> TextSegment.from(task.content()))
+                .toList();
+
+        try {
+            List<Embedding> embeddings = embeddingModel.embedAll(segments).content();
+            if (embeddings == null || embeddings.size() != batch.size()) {
+                throw new IllegalStateException("批量向量化返回数量与分块数量不一致");
+            }
+
+            int success = 0;
+            for (int i = 0; i < batch.size(); i++) {
+                ChunkVectorTask task = batch.get(i);
+                try {
+                    if (storeVector(document, task, embeddings.get(i).vector())) {
+                        success++;
+                    }
+                } catch (Exception e) {
+                    log.error("分块 {} 批量入库失败，内容长度: {}, 错误: {}",
+                            task.chunkIndex(), task.content().length(), e.getMessage(), e);
+                }
+            }
+
+            return success;
+        } catch (Exception e) {
+            log.warn("批量向量化失败，降级为逐条处理: {}, batchSize={}", e.getMessage(), batch.size());
+            return processBatchFallback(document, batch);
+        }
+    }
+
+    private int processBatchFallback(Document document, List<ChunkVectorTask> batch) {
+        int success = 0;
+        for (ChunkVectorTask task : batch) {
+            try {
+                float[] fullVector = embeddingModel.embed(task.content()).content().vector();
+                if (storeVector(document, task, fullVector)) {
+                    success++;
+                }
+            } catch (Exception e) {
+                log.error("分块 {} 降级向量化失败，内容长度: {}, 错误: {}",
+                        task.chunkIndex(), task.content().length(), e.getMessage(), e);
+            }
+        }
+
+        return success;
+    }
+
+    private boolean storeVector(Document document, ChunkVectorTask task, float[] fullVector) {
+        if (fullVector == null || fullVector.length == 0) {
+            log.warn("分块 {} 向量为空，跳过", task.chunkIndex());
+            return false;
+        }
+
+        float[] truncatedVector = mrlService.truncateVector(fullVector);
+        String vectorStr = VectorUtils.vectorToString(truncatedVector);
+
+        UUID vectorId = UUID.randomUUID();
+        vectorStorageService.insertVectorRecord(
+                vectorId,
+                task.chunk().getId(),
+                document.getId(),
+                vectorStr,
+                truncatedVector.length,
+                "Qwen/Qwen3-Embedding-0.6B"
+        );
+
+        log.info("分块 {} 向量化完成 ({}维 -> {}维)", task.chunkIndex(), fullVector.length, truncatedVector.length);
+        return true;
+    }
+
+    private record ChunkVectorTask(int chunkIndex, String content, DocumentChunk chunk) {
     }
 
 }

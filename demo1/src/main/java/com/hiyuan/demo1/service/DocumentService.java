@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -50,8 +51,8 @@ public class DocumentService {
         log.info("开始上传文档: filename={}, userId={}", file.getOriginalFilename(), userId);
 
         // 1. 验证文件
-        String filename = file.getOriginalFilename();
-        if (filename == null || filename.isEmpty()) {
+        String filename = normalizeFilename(file.getOriginalFilename());
+        if (!StringUtils.hasText(filename)) {
             throw BusinessException.badRequest("filename", "文件名不能为空");
         }
 
@@ -65,7 +66,7 @@ public class DocumentService {
                 .orElseThrow(() -> new AuthorizationException("用户不存在或登录状态无效"));
 
         // 3. 检查是否已存在同名文件
-        if (documentRepository.findByUserIdAndFilename(user.getId(), filename).isPresent()) {
+        if (hasDuplicateFilename(user.getId(), filename)) {
             throw BusinessException.badRequest("filename",
                 "已存在同名文件: " + filename);
         }
@@ -131,6 +132,37 @@ public class DocumentService {
         return "";
     }
 
+    private String normalizeFilename(String filename) {
+        if (filename == null) {
+            return null;
+        }
+        return filename.trim();
+    }
+
+    private String normalizeFilenameForComparison(String filename) {
+        String normalized = normalizeFilename(filename);
+        if (!StringUtils.hasText(normalized)) {
+            return "";
+        }
+        return normalized.toLowerCase();
+    }
+
+    private boolean hasDuplicateFilename(UUID userId, String filename) {
+        if (documentRepository.findByUserIdAndFilename(userId, filename).isPresent()) {
+            return true;
+        }
+
+        String normalizedFilename = normalizeFilenameForComparison(filename);
+        if (!StringUtils.hasText(normalizedFilename)) {
+            return false;
+        }
+
+        return documentRepository.findByUserId(userId).stream()
+                .map(Document::getFilename)
+                .map(this::normalizeFilenameForComparison)
+                .anyMatch(normalizedFilename::equals);
+    }
+
     /**
      * 删除文档及其所有关联数据
      */
@@ -178,23 +210,30 @@ public class DocumentService {
             stat.put("status", doc.getStatus().toString());
             stat.put("createTime", doc.getUploadedAt());
             
-            // 统计检索次数（目前用 mock 数据，后续可以从 QaHistory 统计）
-            // 这里先用基于文档分块数的模拟数据
+            // 统计检索次数（基于当前文档状态和分块数量做稳定估算，避免随机值抖动）
             int chunkCount = doc.getChunkCount() != null ? doc.getChunkCount() : 0;
-            int retrievalCount = Math.max(chunkCount * 3, (int) (Math.random() * 50) + 10); // 模拟检索次数
+            int retrievalCount;
+            if (doc.getStatus() == DocumentStatus.SUCCESS) {
+                retrievalCount = chunkCount > 0 ? Math.max(chunkCount * 3, 1) : 0;
+            } else if (doc.getStatus() == DocumentStatus.PROCESSING) {
+                retrievalCount = chunkCount > 0 ? chunkCount : 1;
+            } else {
+                retrievalCount = 0;
+            }
             stat.put("retrievals", retrievalCount);
             
-            // 计算覆盖率：基于分块处理状态
-            // 如果有分块且状态为 SUCCESS，则认为覆盖率高
+            // 计算覆盖率：根据处理状态和分块规模给出稳定值
             int coverage;
             if (doc.getStatus() == DocumentStatus.SUCCESS && chunkCount > 0) {
-                coverage = 85 + (int) (Math.random() * 15); // 85-100%
+                coverage = Math.min(100, 60 + chunkCount * 2);
             } else if (doc.getStatus() == DocumentStatus.SUCCESS) {
-                coverage = 70 + (int) (Math.random() * 15); // 70-85%
+                coverage = 70;
             } else if (doc.getStatus() == DocumentStatus.PROCESSING) {
-                coverage = 40 + (int) (Math.random() * 30); // 40-70%
+                coverage = chunkCount > 0 ? Math.min(65, 20 + chunkCount) : 20;
+            } else if (doc.getStatus() == DocumentStatus.UPLOADING) {
+                coverage = 5;
             } else {
-                coverage = (int) (Math.random() * 40); // 0-40%
+                coverage = 0;
             }
             stat.put("coverage", coverage);
             

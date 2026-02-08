@@ -5,11 +5,15 @@ import api from '@/api/interceptor'
 export const useDocumentStore = defineStore('documents', () => {
   const documents = ref([])
 
+  function normalizeFileName(name) {
+    return (name || '').trim().toLowerCase()
+  }
+
   // Transform backend document format to frontend format
   function transformDocument(backendDoc) {
     return {
       id: backendDoc.id,
-      name: backendDoc.filename || backendDoc.name,
+      name: (backendDoc.filename || backendDoc.name || '').trim(),
       type: (backendDoc.fileType || backendDoc.type || '').toLowerCase(),
       size: backendDoc.fileSize || backendDoc.size || 0,
       createTime: backendDoc.createdAt || backendDoc.createTime || backendDoc.uploadedAt,
@@ -38,13 +42,26 @@ export const useDocumentStore = defineStore('documents', () => {
   }
 
   async function uploadDocument(file) {
+    const displayName = (file?.name || '').trim()
+    if (!displayName) {
+      return { success: false, message: '文件名不能为空' }
+    }
+
+    const normalizedName = normalizeFileName(displayName)
+    const hasDuplicateName = documents.value.some(
+      doc => normalizeFileName(doc.name) === normalizedName
+    )
+    if (hasDuplicateName) {
+      return { success: false, message: `已存在同名文件: ${displayName}` }
+    }
+
     // Extract file extension
-    const extension = file.name.split('.').pop().toLowerCase()
+    const extension = displayName.split('.').pop().toLowerCase()
     
     // Create a temporary document object with metadata
     const tempDoc = {
       id: 'temp-' + Date.now(),
-      name: file.name,
+      name: displayName,
       type: extension,
       size: file.size,
       createTime: new Date().toISOString(),
@@ -99,17 +116,15 @@ export const useDocumentStore = defineStore('documents', () => {
 
   async function deleteDocument(docId) {
     try {
-      // Remove from local list immediately for better UX
-      const index = documents.value.findIndex(d => d.id === docId)
-      if (index !== -1) {
-        documents.value.splice(index, 1)
-      }
-      
       // 使用配置了JWT拦截器的 api 实例
       const response = await api.delete(`/documents/${docId}`)
       const result = response.data
       
       if (result.code === 200) {
+        const index = documents.value.findIndex(d => d.id === docId)
+        if (index !== -1) {
+          documents.value.splice(index, 1)
+        }
         return { success: true }
       }
       return { success: false, message: result.message }
@@ -153,7 +168,7 @@ export const useDocumentStore = defineStore('documents', () => {
     return texts[status] || '未知状态'
   }
 
-  // 获取文档检索统计（包含检索次数和覆盖率）
+  // 获取文档检索统计
   async function fetchDocumentStats() {
     try {
       // 使用配置了JWT拦截器的 api 实例
@@ -165,7 +180,6 @@ export const useDocumentStore = defineStore('documents', () => {
           id: doc.id,
           name: doc.name,
           retrievals: doc.retrievals || 0,
-          coverage: doc.coverage || 0,
           status: doc.status,
           type: doc.type,
           size: doc.size,

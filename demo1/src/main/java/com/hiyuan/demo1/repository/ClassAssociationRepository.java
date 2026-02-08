@@ -62,6 +62,11 @@ public interface ClassAssociationRepository extends JpaRepository<ClassAssociati
     Page<ClassAssociation> findByTeacherId(UUID teacherId, Pageable pageable);
 
     /**
+     * 查询学生关联的所有教师班级记录
+     */
+    List<ClassAssociation> findByStudentId(UUID studentId);
+
+    /**
      * 检查关联是否存在
      * 
      * 用途：

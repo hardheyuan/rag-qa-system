@@ -14,6 +14,8 @@ let refreshSubscribers = []
  */
 const SILENT_ERROR_URLS = [
   '/teacher/students', // 教师学生管理相关 API 由组件处理
+  '/teacher/feedback', // 教师反馈相关 API 由组件处理
+  '/student/feedback', // 学生反馈相关 API 由组件处理
   '/auth/login',       // 登录错误由登录页面处理
   '/auth/register'     // 注册错误由注册页面处理
 ]
@@ -37,8 +39,14 @@ function subscribeTokenRefresh(callback) {
 /**
  * 刷新完成后，执行队列中的所有请求
  */
-function onTokenRefreshed(newToken) {
-  refreshSubscribers.forEach(callback => callback(newToken))
+function onTokenRefreshed(newToken, error = null) {
+  refreshSubscribers.forEach(({ resolve, reject }) => {
+    if (error) {
+      reject(error)
+      return
+    }
+    resolve(newToken)
+  })
   refreshSubscribers = []
 }
 
@@ -129,11 +137,12 @@ api.interceptors.response.use(
       
       // 如果正在刷新Token，将请求加入队列等待
       if (isRefreshing) {
-        return new Promise((resolve) => {
-          subscribeTokenRefresh((newToken) => {
-            originalRequest.headers.Authorization = `Bearer ${newToken}`
-            resolve(api(originalRequest))
-          })
+        return new Promise((resolve, reject) => {
+          subscribeTokenRefresh({ resolve, reject })
+        }).then((newToken) => {
+          originalRequest.headers = originalRequest.headers || {}
+          originalRequest.headers.Authorization = `Bearer ${newToken}`
+          return api(originalRequest)
         })
       }
       
@@ -146,7 +155,12 @@ api.interceptors.response.use(
           refreshToken: userStore.refreshToken
         })
         
-        const { accessToken } = response.data
+        const responseData = response?.data || {}
+        const accessToken = responseData.accessToken || responseData?.data?.accessToken
+
+        if (!accessToken) {
+          throw new Error('刷新 token 响应缺少 accessToken')
+        }
         
         // 更新存储的Access Token
         userStore.setAccessToken(accessToken)
@@ -159,6 +173,7 @@ api.interceptors.response.use(
         return api(originalRequest)
         
       } catch (refreshError) {
+        onTokenRefreshed(null, refreshError)
         // 刷新失败，清除所有认证信息并跳转登录页
         userStore.clearAuth()
         router.push('/login')

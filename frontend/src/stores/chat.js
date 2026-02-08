@@ -17,6 +17,9 @@ export const useChatStore = defineStore('chat', () => {
   const MAX_CONVERSATIONS = 20
   const TOKEN_REFRESH_BUFFER_MS = 60 * 1000
   const MAX_SSE_RETRY = 1
+  const FALLBACK_STREAM_CHUNK_SIZE = 24
+  const FALLBACK_STREAM_DELAY_MS = 16
+  const FALLBACK_STORAGE_UPDATE_INTERVAL = 4
 
   // 根据当前登录用户生成独立的本地存储 key，避免不同账号共享对话
   function getStorageKey() {
@@ -287,7 +290,36 @@ export const useChatStore = defineStore('chat', () => {
     })
   }
 
-  async function askByHttpFallback(payload, assistantMessage) {
+  function wait(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms))
+  }
+
+  async function streamFallbackAnswer(fullAnswer, assistantMessage, updateStorage) {
+    assistantMessage.content = ''
+
+    if (!fullAnswer) {
+      updateStorage()
+      return
+    }
+
+    let chunkCount = 0
+    for (let i = 0; i < fullAnswer.length; i += FALLBACK_STREAM_CHUNK_SIZE) {
+      const chunk = fullAnswer.slice(i, i + FALLBACK_STREAM_CHUNK_SIZE)
+      assistantMessage.content += chunk
+      chunkCount += 1
+
+      if (
+        chunkCount % FALLBACK_STORAGE_UPDATE_INTERVAL === 0 ||
+        i + FALLBACK_STREAM_CHUNK_SIZE >= fullAnswer.length
+      ) {
+        updateStorage()
+      }
+
+      await wait(FALLBACK_STREAM_DELAY_MS)
+    }
+  }
+
+  async function askByHttpFallback(payload, assistantMessage, updateStorage) {
     const response = await qaApi.askQuestion(payload)
     const result = response?.data || {}
     if (typeof result.code === 'number' && result.code !== 200) {
@@ -295,9 +327,11 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     const data = result.data || result
-    assistantMessage.content = data.answer || '抱歉，未获取到回答。'
+    const fullAnswer = data.answer || '抱歉，未获取到回答。'
     assistantMessage.citations = data.citations || []
     assistantMessage.historyId = data.historyId
+
+    await streamFallbackAnswer(fullAnswer, assistantMessage, updateStorage)
   }
 
   async function sendMessage(question) {
@@ -345,8 +379,10 @@ export const useChatStore = defineStore('chat', () => {
         }
       }
 
-      if (!streamSuccess && !assistantMessage.content) {
-        await askByHttpFallback(payload, assistantMessage)
+      if (streamSuccess && !assistantMessage.content) {
+        await askByHttpFallback(payload, assistantMessage, updateStorage)
+      } else if (!streamSuccess && !assistantMessage.content) {
+        await askByHttpFallback(payload, assistantMessage, updateStorage)
       } else if (!streamSuccess && assistantMessage.content) {
         assistantMessage.content += '\n\n> 流式连接中断，以上内容可能未完整生成。'
       }

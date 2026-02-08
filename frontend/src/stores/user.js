@@ -133,8 +133,9 @@ export const useUserStore = defineStore('user', () => {
 
     try {
       const response = await authApi.refreshToken(refreshToken.value)
-      const newAccessToken = response?.data?.accessToken
-      const newRefreshToken = response?.data?.refreshToken
+      const responseData = response?.data || {}
+      const newAccessToken = responseData.accessToken || responseData?.data?.accessToken
+      const newRefreshToken = responseData.refreshToken || responseData?.data?.refreshToken
 
       if (!newAccessToken) {
         throw new Error('刷新接口未返回 access token')

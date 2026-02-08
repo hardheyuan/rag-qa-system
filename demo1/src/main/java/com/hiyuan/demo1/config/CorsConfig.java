@@ -55,10 +55,10 @@ public class CorsConfig {
         // - http://localhost:3000 (React开发服务器)
         // - http://localhost:8000 (静态文件服务器)
         // - file:// (直接打开HTML文件)
-        // - 生产环境的域名
+        // - 其他自定义域名
         config.setAllowedOriginPatterns(List.of("*"));
         
-        // 注意：生产环境建议指定具体域名，如：
+        // 注意：建议按实际前端地址指定域名，如：
         // config.setAllowedOrigins(Arrays.asList(
         //     "http://localhost:3000",
         //     "https://your-frontend-domain.com"

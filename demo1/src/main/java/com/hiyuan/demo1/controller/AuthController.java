@@ -106,7 +106,7 @@ public class AuthController {
      * 
      * 注意：JWT 无状态认证，服务器端只需返回成功
      * Token 的失效由前端清除存储实现
-     * 生产环境可添加 Token 黑名单机制
+     * 如有需要可添加 Token 黑名单机制
      * 
      * @return 成功响应
      */

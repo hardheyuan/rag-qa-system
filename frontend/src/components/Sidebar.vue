@@ -207,6 +207,25 @@
             </div>
           </div>
 
+          <div>
+            <label class="block text-sm font-medium text-[#111418] dark:text-white mb-2">发送给教师</label>
+            <select
+              v-model="feedbackDialog.teacherId"
+              :disabled="feedbackDialog.loadingTeachers || feedbackDialog.teachers.length === 0"
+              class="w-full h-11 px-3 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-[#1a222c] text-[#111418] dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary text-sm disabled:opacity-60"
+            >
+              <option value="" disabled>
+                {{ feedbackDialog.loadingTeachers ? '正在加载教师列表...' : '请选择教师' }}
+              </option>
+              <option v-for="teacher in feedbackDialog.teachers" :key="teacher.id" :value="teacher.id">
+                {{ teacher.username }}
+              </option>
+            </select>
+            <p v-if="!feedbackDialog.loadingTeachers && feedbackDialog.teachers.length === 0" class="mt-1 text-xs text-amber-600 dark:text-amber-400">
+              您暂未绑定教师，暂时无法提交反馈。
+            </p>
+          </div>
+
           <!-- Feedback Content -->
           <div>
             <label class="block text-sm font-medium text-[#111418] dark:text-white mb-2">
@@ -221,6 +240,46 @@
             ></textarea>
             <p class="text-xs text-gray-400 dark:text-gray-500 mt-1 text-right">{{ feedbackDialog.content.length }}/500</p>
           </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <label class="block text-sm font-medium text-[#111418] dark:text-white">我的反馈记录</label>
+              <button
+                @click="loadFeedbackHistory"
+                :disabled="feedbackDialog.loadingHistory"
+                class="text-xs text-primary hover:text-blue-600 disabled:opacity-50"
+              >
+                刷新
+              </button>
+            </div>
+            <div v-if="feedbackDialog.loadingHistory" class="text-xs text-gray-400 dark:text-gray-500">加载中...</div>
+            <div v-else-if="feedbackDialog.history.length === 0" class="text-xs text-gray-400 dark:text-gray-500">
+              暂无反馈记录
+            </div>
+            <div v-else class="space-y-2 max-h-40 overflow-y-auto pr-1">
+              <div
+                v-for="item in feedbackDialog.history"
+                :key="item.id"
+                class="rounded-lg border border-gray-200 dark:border-gray-700 p-2.5 bg-gray-50 dark:bg-gray-800/50 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                @click="openFeedbackHistoryDetail(item)"
+              >
+                <div class="flex items-center justify-between gap-2 mb-1">
+                  <span class="text-xs text-gray-500 dark:text-gray-400">{{ item.teacherName }} · {{ getFeedbackTypeLabel(item.type) }}</span>
+                  <span class="text-[10px] px-1.5 py-0.5 rounded" :class="getStatusClass(item.status)">
+                    {{ getStatusLabel(item.status) }}
+                  </span>
+                </div>
+                <p class="text-xs text-[#111418] dark:text-white leading-snug">{{ item.content }}</p>
+                <p v-if="item.replyContent" class="text-xs text-green-700 dark:text-green-300 mt-1">
+                  教师回复：{{ item.replyContent }}
+                </p>
+                <p class="text-[10px] text-gray-400 dark:text-gray-500 mt-1 flex items-center justify-between">
+                  <span>{{ formatFeedbackTime(item.createdAt) }}</span>
+                  <span class="text-primary">点击查看详情</span>
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- Footer -->
@@ -232,11 +291,56 @@
           </button>
           <button 
             @click="submitFeedback"
-            :disabled="feedbackDialog.isSubmitting || !feedbackDialog.content.trim()"
+            :disabled="feedbackDialog.isSubmitting || !feedbackDialog.content.trim() || !feedbackDialog.teacherId"
             class="px-6 py-2 rounded-lg text-sm font-medium bg-primary text-white hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-2">
             <span v-if="!feedbackDialog.isSubmitting">提交反馈</span>
             <span v-else>提交中...</span>
             <span v-if="feedbackDialog.isSubmitting" class="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="feedbackDialog.showHistoryDetail && feedbackDialog.selectedHistory"
+      class="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60"
+      @click.self="closeFeedbackHistoryDetail"
+    >
+      <div class="bg-white dark:bg-[#1a222c] rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 w-full max-w-lg overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <h3 class="text-lg font-bold text-[#111418] dark:text-white">反馈详情</h3>
+          <button @click="closeFeedbackHistoryDetail" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        <div class="p-6 space-y-3">
+          <p class="text-sm text-gray-700 dark:text-gray-300">教师：{{ feedbackDialog.selectedHistory.teacherName }}</p>
+          <p class="text-sm text-gray-700 dark:text-gray-300">类型：{{ getFeedbackTypeLabel(feedbackDialog.selectedHistory.type) }}</p>
+          <p class="text-sm text-gray-700 dark:text-gray-300">状态：{{ getStatusLabel(feedbackDialog.selectedHistory.status) }}</p>
+          <p class="text-sm text-gray-700 dark:text-gray-300">提交时间：{{ formatFeedbackDateTime(feedbackDialog.selectedHistory.createdAt) }}</p>
+          <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 p-3">
+            <p class="text-sm text-[#111418] dark:text-white whitespace-pre-wrap">{{ feedbackDialog.selectedHistory.content }}</p>
+          </div>
+          <div v-if="feedbackDialog.selectedHistory.replyContent" class="rounded-lg border border-green-200 dark:border-green-900/30 bg-green-50 dark:bg-green-900/10 p-3">
+            <p class="text-xs text-green-700 dark:text-green-300 mb-1">教师回复</p>
+            <p class="text-sm text-green-900 dark:text-green-100 whitespace-pre-wrap">{{ feedbackDialog.selectedHistory.replyContent }}</p>
+          </div>
+        </div>
+
+        <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center">
+          <button
+            @click="deleteFeedbackHistoryItem"
+            :disabled="feedbackDialog.deletingHistory"
+            class="px-4 py-2 rounded-lg text-sm font-medium bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 transition"
+          >
+            {{ feedbackDialog.deletingHistory ? '删除中...' : '删除该反馈' }}
+          </button>
+          <button
+            @click="closeFeedbackHistoryDetail"
+            class="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+          >
+            关闭
           </button>
         </div>
       </div>
@@ -249,11 +353,15 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChatStore } from '../stores/chat'
 import { useUserStore } from '../stores/user'
+import { useToast } from '@/composables/useToast'
+import { feedbackApi } from '@/api/feedback'
+import { getErrorMessage } from '@/utils/errorHandler'
 
 const chatStore = useChatStore()
 const userStore = useUserStore()
 const router = useRouter()
 const user = userStore.user
+const toast = useToast()
 
 const conversations = computed(() => chatStore.conversations)
 const currentChatId = computed(() => chatStore.currentChatId)
@@ -270,8 +378,16 @@ const contextMenu = ref({
 const feedbackDialog = ref({
   visible: false,
   type: 'suggestion', // suggestion, issue, other
+  teacherId: '',
+  teachers: [],
+  history: [],
+  selectedHistory: null,
+  showHistoryDetail: false,
+  deletingHistory: false,
   content: '',
-  isSubmitting: false
+  isSubmitting: false,
+  loadingTeachers: false,
+  loadingHistory: false
 })
 
 function handleNewChat() {
@@ -310,45 +426,192 @@ function handleLogout() {
 }
 
 // Feedback functions
-function openFeedbackDialog() {
+async function openFeedbackDialog() {
   feedbackDialog.value = {
     visible: true,
     type: 'suggestion',
+    teacherId: '',
+    teachers: [],
+    history: [],
+    selectedHistory: null,
+    showHistoryDetail: false,
+    deletingHistory: false,
     content: '',
-    isSubmitting: false
+    isSubmitting: false,
+    loadingTeachers: false,
+    loadingHistory: false
   }
+
+  await loadFeedbackDialogData()
 }
 
 function closeFeedbackDialog() {
   feedbackDialog.value.visible = false
   feedbackDialog.value.content = ''
   feedbackDialog.value.isSubmitting = false
+  feedbackDialog.value.showHistoryDetail = false
+  feedbackDialog.value.selectedHistory = null
+  feedbackDialog.value.deletingHistory = false
+}
+
+async function loadFeedbackDialogData() {
+  feedbackDialog.value.loadingTeachers = true
+  feedbackDialog.value.loadingHistory = true
+
+  try {
+    const [teachers, historyPage] = await Promise.all([
+      feedbackApi.getTeacherOptions(),
+      feedbackApi.getMyFeedback({ page: 0, size: 5 })
+    ])
+
+    feedbackDialog.value.teachers = teachers || []
+    feedbackDialog.value.history = historyPage?.content || []
+
+    if (feedbackDialog.value.teachers.length > 0) {
+      feedbackDialog.value.teacherId = feedbackDialog.value.teachers[0].id
+    }
+  } catch (error) {
+    toast.error(getErrorMessage(error))
+  } finally {
+    feedbackDialog.value.loadingTeachers = false
+    feedbackDialog.value.loadingHistory = false
+  }
+}
+
+async function loadFeedbackHistory() {
+  feedbackDialog.value.loadingHistory = true
+  try {
+    const historyPage = await feedbackApi.getMyFeedback({ page: 0, size: 5 })
+    feedbackDialog.value.history = historyPage?.content || []
+    const selectedId = feedbackDialog.value.selectedHistory?.id
+    if (selectedId && !feedbackDialog.value.history.some(item => item.id === selectedId)) {
+      closeFeedbackHistoryDetail()
+    }
+  } catch (error) {
+    toast.error(getErrorMessage(error))
+  } finally {
+    feedbackDialog.value.loadingHistory = false
+  }
+}
+
+function openFeedbackHistoryDetail(item) {
+  feedbackDialog.value.selectedHistory = item
+  feedbackDialog.value.showHistoryDetail = true
+}
+
+function closeFeedbackHistoryDetail() {
+  feedbackDialog.value.showHistoryDetail = false
+  feedbackDialog.value.selectedHistory = null
+  feedbackDialog.value.deletingHistory = false
+}
+
+async function deleteFeedbackHistoryItem() {
+  const current = feedbackDialog.value.selectedHistory
+  if (!current?.id) {
+    return
+  }
+
+  const confirmed = window.confirm('确认删除这条反馈记录吗？删除后不可恢复。')
+  if (!confirmed) {
+    return
+  }
+
+  feedbackDialog.value.deletingHistory = true
+  try {
+    await feedbackApi.deleteMyFeedback(current.id)
+    feedbackDialog.value.history = feedbackDialog.value.history.filter(item => item.id !== current.id)
+    toast.success('反馈已删除')
+    closeFeedbackHistoryDetail()
+  } catch (error) {
+    toast.error(getErrorMessage(error))
+    feedbackDialog.value.deletingHistory = false
+  }
 }
 
 async function submitFeedback() {
   if (!feedbackDialog.value.content.trim()) {
-    alert('请输入反馈内容')
+    toast.warning('请输入反馈内容')
+    return
+  }
+
+  if (!feedbackDialog.value.teacherId) {
+    toast.warning('请先选择教师')
     return
   }
 
   feedbackDialog.value.isSubmitting = true
 
-  // Simulate API call
-  await new Promise(resolve => setTimeout(resolve, 1000))
+  try {
+    await feedbackApi.submitFeedback({
+      teacherId: feedbackDialog.value.teacherId,
+      type: feedbackDialog.value.type,
+      content: feedbackDialog.value.content.trim()
+    })
 
-  // In a real app, this would send data to the backend
-  console.log('Feedback submitted:', {
-    type: feedbackDialog.value.type,
-    content: feedbackDialog.value.content,
-    user: userStore.user.name,
-    timestamp: new Date().toISOString()
+    feedbackDialog.value.isSubmitting = false
+    feedbackDialog.value.visible = false
+    feedbackDialog.value.content = ''
+    toast.success('反馈已提交，教师会尽快处理')
+  } catch (error) {
+    feedbackDialog.value.isSubmitting = false
+    toast.error(getErrorMessage(error))
+  }
+}
+
+function getFeedbackTypeLabel(type) {
+  const map = {
+    suggestion: '建议',
+    issue: '问题',
+    other: '其他',
+    SUGGESTION: '建议',
+    ISSUE: '问题',
+    OTHER: '其他'
+  }
+  return map[type] || '其他'
+}
+
+function getStatusLabel(status) {
+  return status === 'REPLIED' ? '已回复' : '待处理'
+}
+
+function getStatusClass(status) {
+  if (status === 'REPLIED') {
+    return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+  }
+  return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+}
+
+function formatFeedbackTime(value) {
+  if (!value) {
+    return '-'
+  }
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+  return date.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
   })
+}
 
-  feedbackDialog.value.isSubmitting = false
-  feedbackDialog.value.visible = false
-  feedbackDialog.value.content = ''
-
-  alert('反馈已提交，感谢您的建议！')
+function formatFeedbackDateTime(value) {
+  if (!value) {
+    return '-'
+  }
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
 }
 
 // 点击其他地方隐藏右键菜单

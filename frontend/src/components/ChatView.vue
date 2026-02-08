@@ -57,8 +57,8 @@
           :is-streaming="Boolean(msg.streaming)"
         />
 
-        <!-- Loading State -->
-        <div v-if="isLoading" class="flex gap-4 md:gap-6">
+        <!-- Loading State (only when no streaming assistant bubble exists) -->
+        <div v-if="isLoading && !hasStreamingAssistantMessage" class="flex gap-4 md:gap-6">
           <div class="flex shrink-0 flex-col items-center">
             <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-white shadow-md shadow-blue-500/20">
               <span class="material-symbols-outlined text-[24px] animate-pulse">smart_toy</span>
@@ -96,6 +96,9 @@ const scrollContainer = ref(null)
 
 const messages = computed(() => chatStore.messages)
 const isLoading = computed(() => chatStore.isLoading)
+const hasStreamingAssistantMessage = computed(() =>
+  messages.value.some(msg => msg.type === 'assistant' && Boolean(msg.streaming))
+)
 
 function handleSend(question) {
   chatStore.sendMessage(question)
@@ -113,7 +116,7 @@ function scrollToBottom() {
   }
 }
 
-watch(messages.value, () => {
+watch(messages, () => {
   nextTick(() => scrollToBottom())
 }, { deep: true })
 

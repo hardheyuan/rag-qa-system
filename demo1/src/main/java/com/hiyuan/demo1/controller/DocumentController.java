@@ -3,6 +3,7 @@ package com.hiyuan.demo1.controller;
 import com.hiyuan.demo1.dto.response.ApiResponse;
 import com.hiyuan.demo1.entity.Document;
 import com.hiyuan.demo1.enums.DocumentStatus;
+import com.hiyuan.demo1.exception.BusinessException;
 import com.hiyuan.demo1.repository.DocumentRepository;
 import com.hiyuan.demo1.security.UserPrincipal;
 import com.hiyuan.demo1.service.DocumentService;
@@ -50,6 +51,9 @@ public class DocumentController {
         try {
             Document document = documentService.uploadDocument(file, userId);
             return ApiResponse.success("文件上传成功，正在处理中", document);
+        } catch (BusinessException e) {
+            log.warn("上传业务校验失败: {}", e.getMessage());
+            return ApiResponse.error(e.getCode(), e.getMessage());
         } catch (IllegalArgumentException e) {
             log.warn("上传参数错误: {}", e.getMessage());
             return ApiResponse.badRequest(e.getMessage());

@@ -2,7 +2,7 @@
   <div class="bg-white dark:bg-card-dark border border-slate-200 dark:border-card-border rounded-xl p-0 overflow-hidden shadow-sm flex flex-col h-full">
     <!-- Header -->
     <div class="p-6 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
-      <h3 class="text-base font-semibold text-slate-900 dark:text-white">文档检索与覆盖率</h3>
+      <h3 class="text-base font-semibold text-slate-900 dark:text-white">文档检索统计</h3>
       <button 
         @click="refreshStats"
         class="text-xs font-medium text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
@@ -21,7 +21,6 @@
           <tr>
             <th class="px-6 py-3 font-medium" scope="col">文档名称</th>
             <th class="px-6 py-3 font-medium" scope="col">被检索次数</th>
-            <th class="px-6 py-3 font-medium min-w-[160px]" scope="col">上下文覆盖率</th>
             <th class="px-6 py-3 font-medium" scope="col">状态</th>
           </tr>
         </thead>
@@ -43,21 +42,6 @@
               </div>
             </td>
             <td class="px-6 py-4 text-slate-600 dark:text-slate-300">{{ doc.retrievals }}</td>
-            <td class="px-6 py-4 align-middle">
-              <div class="w-full max-w-[140px]">
-                <div class="flex justify-between text-[10px] mb-1 font-medium">
-                  <span :class="getCoverageLabelClass(doc.coverage)">{{ getCoverageLabel(doc.coverage) }}</span>
-                  <span class="text-slate-500">{{ doc.coverage }}%</span>
-                </div>
-                <div class="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
-                  <div 
-                    class="h-1.5 rounded-full transition-all duration-500"
-                    :class="getCoverageBarClass(doc.coverage)"
-                    :style="{ width: doc.coverage + '%' }"
-                  ></div>
-                </div>
-              </div>
-            </td>
             <td class="px-6 py-4">
               <span 
                 class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
@@ -68,7 +52,7 @@
             </td>
           </tr>
           <tr v-if="documents.length === 0 && !loading">
-            <td colspan="4" class="px-6 py-12 text-center text-slate-400 dark:text-slate-500">
+            <td colspan="3" class="px-6 py-12 text-center text-slate-400 dark:text-slate-500">
               暂无文档数据
             </td>
           </tr>
@@ -124,24 +108,6 @@ function formatFileSize(bytes) {
   const sizes = ['B', 'KB', 'MB', 'GB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-}
-
-function getCoverageLabel(coverage) {
-  if (coverage >= 80) return '高'
-  if (coverage >= 50) return '中'
-  return '低'
-}
-
-function getCoverageLabelClass(coverage) {
-  if (coverage >= 80) return 'text-emerald-600 dark:text-emerald-400'
-  if (coverage >= 50) return 'text-amber-600 dark:text-amber-400'
-  return 'text-red-600 dark:text-red-400'
-}
-
-function getCoverageBarClass(coverage) {
-  if (coverage >= 80) return 'bg-emerald-500'
-  if (coverage >= 50) return 'bg-amber-500'
-  return 'bg-red-500'
 }
 
 function getStatusLabel(status) {

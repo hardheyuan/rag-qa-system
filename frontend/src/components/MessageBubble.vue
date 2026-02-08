@@ -45,7 +45,7 @@
       </div>
 
       <!-- Actions (only for AI) -->
-      <div v-if="!isUser" class="flex gap-2 mt-1">
+      <div v-if="!isUser && !isStreaming && hasContent" class="flex gap-2 mt-1">
         <button class="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 px-3 py-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-white/5 transition">
           <span class="material-symbols-outlined text-[16px]">thumb_up</span>
           Helpful
@@ -86,6 +86,7 @@ const markdown = new MarkdownIt({
 })
 
 const isUser = computed(() => props.type === 'user')
+const hasContent = computed(() => Boolean((props.content || '').trim()))
 
 const renderedContent = computed(() => {
   return markdown.render(props.content || '')

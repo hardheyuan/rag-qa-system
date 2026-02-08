@@ -18,6 +18,7 @@ import com.hiyuan.demo1.util.VectorUtils;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -28,6 +29,8 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -54,6 +57,11 @@ public class QaService {
     // 相似度阈值：低于此值的文档将被过滤
     // 余弦相似度范围 [-1, 1]，通常相关文档 > 0.7，不相关 < 0.5
     private static final double SIMILARITY_THRESHOLD = 0.65;
+    // 每个文档最多保留一条引用，避免同一文档重复刷屏
+    private static final int MAX_CITATIONS_PER_DOCUMENT = 1;
+
+    @Value("${qa.min-citations:2}")
+    private int minCitations;
 
     /**
      * 处理问答请求
@@ -64,6 +72,10 @@ public class QaService {
             QaProcessingContext context = prepareContext(request);
             String answer = llmService.generate(context.prompt());
             QaHistory history = saveHistory(context.user(), context.question(), answer, context.startTime());
+            log.info("[METRIC][QA] mode=sync, topKHits={}, citationsAfterFilter={}, durationMs={}",
+                    context.retrievedCount(),
+                    context.citations().size(),
+                    System.currentTimeMillis() - context.startTime());
             return QaResponse.builder()
                     .answer(answer)
                     .citations(context.citations())
@@ -104,6 +116,10 @@ public class QaService {
                             context.answerBuilder().toString(),
                             context.startTime()
                     );
+                    log.info("[METRIC][QA] mode=stream, topKHits={}, citationsAfterFilter={}, durationMs={}",
+                            context.retrievedCount(),
+                            context.citations().size(),
+                            System.currentTimeMillis() - context.startTime());
                     return buildEvent("done", Map.of(
                             "historyId", history == null ? null : history.getId().toString(),
                             "answer", context.answerBuilder().toString(),
@@ -170,7 +186,7 @@ public class QaService {
                 request.getPreviousAnswer()
         );
 
-        return new QaProcessingContext(user, request.getQuestion(), citations, prompt, startTime);
+        return new QaProcessingContext(user, request.getQuestion(), citations, prompt, startTime, nearestIds.size());
     }
 
     private List<VectorRecord> reorderByIds(List<UUID> nearestIds, List<VectorRecord> loadedRecords) {
@@ -187,8 +203,8 @@ public class QaService {
     }
 
     private List<QaResponse.CitationInfo> buildCitations(List<VectorRecord> records, float[] truncatedVector) {
-        List<QaResponse.CitationInfo> citations = new ArrayList<>(records.size());
-        List<QaResponse.CitationInfo> candidates = new ArrayList<>(records.size());
+        List<CitationCandidate> citations = new ArrayList<>(records.size());
+        List<CitationCandidate> candidates = new ArrayList<>(records.size());
         for (VectorRecord vr : records) {
             Document document = vr.getDocument();
             DocumentChunk chunk = vr.getChunk();
@@ -223,9 +239,19 @@ public class QaService {
                     .score(score)
                     .build();
 
-            candidates.add(citation);
+            String documentKey;
+            if (document != null && document.getId() != null) {
+                documentKey = document.getId().toString();
+            } else if (document != null && StringUtils.hasText(document.getFilename())) {
+                documentKey = document.getFilename();
+            } else {
+                documentKey = "record:" + vr.getId();
+            }
+
+            CitationCandidate candidate = new CitationCandidate(documentKey, citation);
+            candidates.add(candidate);
             if (score == null || score >= SIMILARITY_THRESHOLD) {
-                citations.add(citation);
+                citations.add(candidate);
             } else {
                 log.info("过滤低相似度文档: {} (score: {}, threshold: {})",
                         document != null ? document.getFilename() : "NULL",
@@ -234,12 +260,56 @@ public class QaService {
             }
         }
 
-        if (citations.isEmpty() && !candidates.isEmpty()) {
-            int fallbackSize = Math.min(3, candidates.size());
-            log.warn("相似度过滤后无结果，降级返回前 {} 条候选引用", fallbackSize);
-            return new ArrayList<>(candidates.subList(0, fallbackSize));
+        List<CitationCandidate> deduplicatedCitations = deduplicateCandidatesByDocument(citations);
+        if (deduplicatedCitations.size() < citations.size()) {
+            log.info("引用按文档去重: {} -> {}", citations.size(), deduplicatedCitations.size());
         }
-        return citations;
+
+        int minCitationCount = Math.max(1, minCitations);
+        if (deduplicatedCitations.size() < minCitationCount && !candidates.isEmpty()) {
+            List<CitationCandidate> deduplicatedCandidates = deduplicateCandidatesByDocument(candidates);
+            Map<String, CitationCandidate> supplemented = new LinkedHashMap<>();
+
+            for (CitationCandidate citation : deduplicatedCitations) {
+                supplemented.put(citation.documentKey(), citation);
+            }
+            for (CitationCandidate candidate : deduplicatedCandidates) {
+                if (supplemented.size() >= minCitationCount) {
+                    break;
+                }
+                supplemented.putIfAbsent(candidate.documentKey(), candidate);
+            }
+
+            if (supplemented.size() > deduplicatedCitations.size()) {
+                log.warn("相似度过滤后仅 {} 条，保底补充到 {} 条引用",
+                        deduplicatedCitations.size(), supplemented.size());
+            }
+            return toCitationInfos(new ArrayList<>(supplemented.values()));
+        }
+        return toCitationInfos(deduplicatedCitations);
+    }
+
+    private List<CitationCandidate> deduplicateCandidatesByDocument(List<CitationCandidate> candidates) {
+        Map<String, Integer> documentCitationCount = new HashMap<>();
+        List<CitationCandidate> deduplicated = new ArrayList<>(candidates.size());
+
+        for (CitationCandidate candidate : candidates) {
+            int count = documentCitationCount.getOrDefault(candidate.documentKey(), 0);
+            if (count >= MAX_CITATIONS_PER_DOCUMENT) {
+                continue;
+            }
+            documentCitationCount.put(candidate.documentKey(), count + 1);
+            deduplicated.add(candidate);
+        }
+
+        return deduplicated;
+    }
+
+    private List<QaResponse.CitationInfo> toCitationInfos(List<CitationCandidate> candidates) {
+        return candidates.stream().map(CitationCandidate::citation).toList();
+    }
+
+    private record CitationCandidate(String documentKey, QaResponse.CitationInfo citation) {
     }
 
     private QaHistory saveHistory(User user, String question, String answer, long startTime) {
@@ -278,14 +348,21 @@ public class QaService {
         private final List<QaResponse.CitationInfo> citations;
         private final String prompt;
         private final long startTime;
+        private final int retrievedCount;
         private final StringBuilder answerBuilder = new StringBuilder();
 
-        QaProcessingContext(User user, String question, List<QaResponse.CitationInfo> citations, String prompt, long startTime) {
+        QaProcessingContext(User user,
+                            String question,
+                            List<QaResponse.CitationInfo> citations,
+                            String prompt,
+                            long startTime,
+                            int retrievedCount) {
             this.user = user;
             this.question = question;
             this.citations = List.copyOf(citations);
             this.prompt = prompt;
             this.startTime = startTime;
+            this.retrievedCount = retrievedCount;
         }
 
         public User user() {
@@ -306,6 +383,10 @@ public class QaService {
 
         public long startTime() {
             return startTime;
+        }
+
+        public int retrievedCount() {
+            return retrievedCount;
         }
 
         public void appendAnswer(String chunk) {

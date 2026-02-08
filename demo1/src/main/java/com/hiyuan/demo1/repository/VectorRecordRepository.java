@@ -58,9 +58,9 @@ public interface VectorRecordRepository extends JpaRepository<VectorRecord, UUID
 
     /**
      * 向量相似度查询（原生 SQL）
-     * 使用 pgvector 的 <-> 操作符计算 L2 距离
+     * 使用 pgvector 的 <=> 操作符计算 cosine 距离
      * 返回向量记录的 ID 列表，需要后续查询加载完整对象
-     * 
+     *
      * @param queryVector 查询向量（字符串格式）
      * @param userId      用户 ID（用于数据隔离；为 null 时不做用户过滤）
      * @param limit       返回数量
@@ -71,7 +71,7 @@ public interface VectorRecordRepository extends JpaRepository<VectorRecord, UUID
             JOIN t_document d ON vr.document_id = d.id
             WHERE (CAST(:userId AS UUID) IS NULL OR d.user_id = :userId)
               AND d.status = 'SUCCESS'
-            ORDER BY vr.embedding <-> CAST(:queryVector AS vector)
+            ORDER BY vr.embedding <=> CAST(:queryVector AS vector)
             LIMIT :limit
             """, nativeQuery = true)
     List<UUID> findNearestVectorIds(
@@ -87,7 +87,7 @@ public interface VectorRecordRepository extends JpaRepository<VectorRecord, UUID
             JOIN t_document d ON vr.document_id = d.id
             WHERE d.user_id IN (:ownerIds)
               AND d.status = 'SUCCESS'
-            ORDER BY vr.embedding <-> CAST(:queryVector AS vector)
+            ORDER BY vr.embedding <=> CAST(:queryVector AS vector)
             LIMIT :limit
             """, nativeQuery = true)
     List<UUID> findNearestVectorIdsByOwnerIds(

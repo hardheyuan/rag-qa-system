@@ -81,7 +81,7 @@ export const documentApi = {
    * @returns {Promise} 上传响应
    */
   uploadDocument: (formData) => {
-    return api.post('/documents', formData, {
+    return api.post('/documents/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -158,6 +158,6 @@ export const systemApi = {
    * @returns {Promise} 健康状态
    */
   getHealth: () => {
-    return api.get('/actuator/health')
+    return api.get('/system/health')
   }
 }

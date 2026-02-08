@@ -7,7 +7,7 @@
         </div>
         <div>
           <h3 class="text-lg font-semibold text-slate-900 dark:text-white">上传文档</h3>
-          <p class="text-sm text-slate-500 dark:text-slate-400">支持 PDF、Word、PPT 格式，单个文件不超过 50MB</p>
+          <p class="text-sm text-slate-500 dark:text-slate-400">支持 PDF、DOCX、PPTX 格式，单个文件不超过 50MB</p>
         </div>
       </div>
     </div>
@@ -30,7 +30,7 @@
         ref="fileInput"
         type="file"
         multiple
-        accept=".pdf,.doc,.docx,.ppt,.pptx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        accept=".pdf,.docx,.pptx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation"
         class="hidden"
         @change="handleFileSelect"
       />
@@ -49,8 +49,8 @@
         </div>
         <div class="flex items-center gap-2 mt-2">
           <span class="px-2 py-1 rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-xs font-medium">PDF</span>
-          <span class="px-2 py-1 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-xs font-medium">Word</span>
-          <span class="px-2 py-1 rounded bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 text-xs font-medium">PPT</span>
+          <span class="px-2 py-1 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-xs font-medium">DOCX</span>
+          <span class="px-2 py-1 rounded bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 text-xs font-medium">PPTX</span>
         </div>
          <p class="text-xs text-slate-400 dark:text-slate-500 mt-2">
            单个文件最大 50MB · 扫描版 PDF 将自动使用 OCR 识别
@@ -84,12 +84,10 @@ const isUploading = ref(false)
 const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
 const ALLOWED_TYPES = [
   'application/pdf',
-  'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-powerpoint',
   'application/vnd.openxmlformats-officedocument.presentationml.presentation'
 ]
-const ALLOWED_EXTENSIONS = ['.pdf', '.doc', '.docx', '.ppt', '.pptx']
+const ALLOWED_EXTENSIONS = ['.pdf', '.docx', '.pptx']
 
 function triggerFileInput() {
   fileInput.value?.click()
@@ -122,7 +120,7 @@ async function processFiles(files) {
     const isValidType = ALLOWED_TYPES.includes(file.type) || ALLOWED_EXTENSIONS.includes(extension)
 
     if (!isValidType) {
-      alert(`不支持的文件格式: ${file.name}\n仅支持 PDF、Word、PPT 文件`)
+      alert(`不支持的文件格式: ${file.name}\n仅支持 PDF、DOCX、PPTX 文件`)
       continue
     }
 

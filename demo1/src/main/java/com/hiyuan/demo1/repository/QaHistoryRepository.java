@@ -47,6 +47,11 @@ public interface QaHistoryRepository extends JpaRepository<QaHistory, UUID> {
     long countByUserId(UUID userId);
 
     /**
+     * 检查问答历史是否属于指定用户
+     */
+    boolean existsByIdAndUserId(UUID id, UUID userId);
+
+    /**
      * 删除用户的所有问答历史
      */
     void deleteByUserId(UUID userId);

@@ -9,9 +9,9 @@ spring:
 
   # 数据源配置
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:rag_qa_system}
-    username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:123456}
+    url: jdbc:postgresql://aws-1-ap-northeast-2.pooler.supabase.com:5432/postgres?sslmode=require
+    username: postgres.zicfjrsszigtcnmueahe
+    password: postgres1235
     driver-class-name: org.postgresql.Driver
     hikari:
       pool-name: RAG-QA-HikariPool
@@ -22,6 +22,8 @@ spring:
       max-lifetime: 1800000
       auto-commit: true
       connection-test-query: SELECT 1
+      data-source-properties:
+        sslmode: require
 
   # Flyway 数据库迁移配置
   flyway:
@@ -31,7 +33,7 @@ spring:
     baseline-version: 0
     validate-on-migrate: true
     out-of-order: false
-    clean-disabled: true  # 生产环境禁用clean操作
+    clean-disabled: true  # 禁用 clean 操作
 
   # SQL 初始化配置（已迁移到Flyway，此处禁用）
   sql:
@@ -42,7 +44,7 @@ spring:
   jpa:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     show-sql: false
     properties:
       hibernate:
@@ -97,6 +99,7 @@ langchain4j:
 embedding:
   original-dimension: 1024    # 原始向量维度（Qwen3-Embedding-0.6B 输出维度）
   target-dimension: 1024      # 目标存储维度（支持: 256, 512, 1024, 2048）
+  batch-size: 16              # 批量向量化大小
   # 使用 MRL 可以在保持大部分语义信息的同时减少存储空间和提升检索速度
 
 # 文档处理配置
@@ -104,8 +107,8 @@ document:
   upload-dir: ./uploads
   max-file-size: 52428800
   supported-types: PDF,DOCX,PPTX,TXT
-  chunk-size: 1000                     # 分块大小（字符数）
-  chunk-overlap: 100                   # 分块重叠（字符数）
+  chunk-size: 800                      # 分块大小（字符数）
+  chunk-overlap: 120                   # 分块重叠（字符数）
 
 # 阿里云 OCR 配置（高精版）
 # 用于识别扫描版 PDF、图片中的文字
@@ -135,13 +138,17 @@ aliyun:
 
 # 问答配置
 qa:
-  top-k: 5                             # 检索相关文档数量
+  top-k: 8                             # 检索相关文档数量
+  min-citations: 2                     # 相似度过滤后保底引用数
   temperature: 0.7                     # LLM 生成温度
   max-tokens: 4096                     # 最大生成 token 数
   timeout-seconds: 120                 # 问答超时时间
 
 # 日志配置
 logging:
+  charset:
+    console: ${LOGGING_CHARSET_CONSOLE:UTF-8}
+    file: UTF-8
   level:
     root: INFO
     com.hiyuan: DEBUG
@@ -157,8 +164,8 @@ logging:
 
 # 线程池配置
 async:
-  core-pool-size: 2
-  max-pool-size: 5
+  core-pool-size: 4
+  max-pool-size: 8
   queue-capacity: 100
   thread-name-prefix: document-processor-
 
@@ -177,9 +184,9 @@ management:
 # 双Token策略：Access Token (短期) + Refresh Token (长期)
 
 jwt:
-  # JWT 签名密钥（从环境变量读取，生产环境必须设置）
+  # JWT 签名密钥（支持从环境变量读取）
   # HS512 算法要求至少 512 位（64 字节）的密钥
-  # 注意：开发环境使用默认密钥，生产环境必须设置 JWT_SECRET 环境变量！
+  # 建议通过 JWT_SECRET 环境变量覆盖默认值
   secret: ${JWT_SECRET:superSecretKeyForDevelopmentOnlyChangeInProduction2024PleaseUseStrongRandomKeyInProductionEnvironmentForBetterSecurity}
   
   # Access Token 配置（用于API认证，短期有效）
@@ -192,7 +199,7 @@ jwt:
 
 # AI提供商配置加密密钥
 # 用于加密存储在数据库中的API密钥
-# 生产环境必须设置APP_ENCRYPTION_KEY环境变量，长度至少32字符
+# 建议设置 APP_ENCRYPTION_KEY 环境变量，长度至少32字符
 app:
   encryption:
     key: ${APP_ENCRYPTION_KEY:default-encryption-key-32-chars!}

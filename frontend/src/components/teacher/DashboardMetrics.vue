@@ -11,8 +11,7 @@
       </div>
       <div class="relative z-10">
         <p class="text-slate-500 dark:text-slate-400 text-sm font-medium">待审核反馈</p>
-        <h3 class="text-3xl font-bold text-slate-900 dark:text-white mt-1">{{ metrics.pendingReviews }}</h3>
-        <p class="text-xs text-red-500/80 mt-1 font-medium">{{ metrics.lowConfidence }} 个低置信度回答</p>
+        <h3 class="text-3xl font-bold text-slate-900 dark:text-white mt-1">{{ props.pendingReviews }}</h3>
       </div>
     </div>
 
@@ -122,11 +121,15 @@ import { useRouter } from 'vue-router'
 
 const router = useRouter()
 const emit = defineEmits(['openNotification'])
+const props = defineProps({
+  pendingReviews: {
+    type: Number,
+    default: 0
+  }
+})
 
 // Mock data for metrics
 const metrics = {
-  pendingReviews: 12,
-  lowConfidence: 5,
   totalQuestions: 1248,
   questionsTrend: '+12%',
   aiRelevance: 94,
@@ -149,7 +152,10 @@ function openNotificationModal() {
 
 // 查看反馈（功能即将推出）
 function viewFeedback() {
-  alert('查看反馈功能即将推出！')
+  const panel = document.getElementById('teacher-feedback-panel')
+  if (panel) {
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 }
 
 // 数据分析（功能即将推出）

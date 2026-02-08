@@ -100,7 +100,7 @@ public class Document extends BaseEntity {
      * - uploads/550e8400-e29b-41d4-a716-446655440000/Java教程.pdf
      * 
      * 注意事项：
-     * - 生产环境建议使用对象存储（如AWS S3）
+     * - 如有需要可改为对象存储（如AWS S3）
      * - 需要考虑文件备份和容灾
      */
     @Column(name = "file_path", length = 500)
